@@ -35,7 +35,7 @@ services:
   ioc:
     build: .
     image: ioc-architect:local
-    command: ["python", "${IOC_PART:-p2}/serve.py", "/workspace"]
+    command: ["python", "${IOC_PART:-p3}/serve.py", "/workspace"]
     user: "${IOC_UID:-1000}:${IOC_GID:-1000}"
     depends_on:
       ollama: {condition: service_healthy}

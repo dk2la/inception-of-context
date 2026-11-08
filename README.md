@@ -9,6 +9,7 @@ textual intent into a validated patch that rolls back on failure.
 |---|---|---|
 | 1 | [`p1/`](p1) | Logical chunking (AST), local embeddings (all-MiniLM-L6-v2), persistent ChromaDB, incremental watcher, dashboard *Overview* + *Files* |
 | 2 | [`p2/`](p2) | Architect API (FastAPI): `/context` hybrid retrieval (Chroma + BM25), `/ask` grounded Q&A with a local `qwen2.5:3b`, dashboard *ChromaDB Explorer* + *Ask & Retrieve* |
+| 3 | [`p3/`](p3) | Patch loop: `qwen2.5-coder:3b` writes a JSON patch, which is sanity-checked, applied atomically, validated by `ioc.config.yml`, retried up to 3 times, then committed or rolled back byte-for-byte. Dashboard *Patch Loop* |
 | — | [`demo/`](demo) | The target project: a tiny notes app with its own `ioc.config.yml` |
 
 ## Quick start
@@ -31,7 +32,23 @@ The stack has three services:
 
 The first start downloads the LLMs (~1.9 GB each) and the embedding model
 (`all-MiniLM-L6-v2`, ~80 MB) into Docker volumes. Every later start is offline.
-`IOC_PART=p1 make up` runs only part 1.
+By default `make up` runs the full system (part 3). `IOC_PART=p1 make up` or `IOC_PART=p2 make up` runs an earlier stage.
+
+### Demo script (≈5 minutes)
+
+1. Open **Overview** for the chunk count, models and indexed files. **Files** shows the chunk
+   boundaries; open `notes/service.py` and each method is its own chunk.
+2. Edit `demo/notes/service.py` in an editor: the *Live activity* feed shows `modified … updated=1`.
+   Delete a file: `deleted … removed=N`.
+3. **Ask & Retrieve**:
+   * `is there a function called authenticate?` → "No …", answered from the index.
+   * `what functions are in notes/service.py?` → the exact list.
+   * `explain how NoteService.search works` → a grounded answer with its sources.
+4. **Patch Loop**: `add a function whisper(name) in main.py that returns the greeting in lowercase`
+   → `SUCCESS in 1 attempt(s)`, and the watcher reindexes `main.py`.
+5. Force a rollback: `change greet in main.py so it returns 'Hi, {name}!'. Do not touch the tests.`
+   The test suite fails three times, the project is restored byte-for-byte and `git status demo` is clean.
+6. `make reset-demo` puts the demo back after successful patches.
 
 Try the watcher: with the dashboard open on *Overview*, edit, create or delete a
 file under `demo/`. The *Live activity* feed shows exactly which chunks
@@ -148,3 +165,75 @@ Dashboard: *ChromaDB Explorer* (raw chunks, filter by file/kind, pagination) and
 | `OLLAMA_URL` | `http://localhost:11434` | local Ollama |
 | `IOC_ASK_MODEL` | `qwen2.5:3b` | model for `/ask` |
 | `IOC_CODE_MODEL` | `qwen2.5-coder:3b` | model for the patch loop (part 3) |
+
+## Part 3: generation, application and validation loop
+
+`python p3/serve.py [target]` runs the full system. A loop iteration is driven from the
+*Patch Loop* tab or over HTTP:
+
+| Endpoint | What |
+|---|---|
+| `POST /patch/run` `{intent, k, max_attempts≤3, stream?}` | the full loop. `stream: true` returns NDJSON step events (used by the dashboard) |
+| `POST /patch/generate` `{intent, k}` | a single stage: generate + sanity check, nothing is written |
+| `GET /patch/history` | the last 20 runs |
+
+**Patch format**: structured JSON, never a diff. `content` is the complete post-change file:
+
+```json
+{"summary": "add whisper() to main.py",
+ "files": [{"path": "main.py", "op": "modify", "content": "<complete new file>"}]}
+```
+
+**One iteration** ([`loop.py`](p3/ioc_patch/loop.py)):
+1. **Generate** ([`generator.py`](p3/ioc_patch/generator.py)): `qwen2.5-coder:3b` runs in Ollama's JSON mode. The prompt holds
+   * the intent;
+   * the project file list;
+   * symbol facts from part 2;
+   * the *full* content of up to 3 relevant files (files named in the intent first, then the files of the top-k chunks);
+   * the other retrieved chunks as read-only context.
+
+   On a retry the prompt also gets the previous answer and the exact error.
+2. **Sanity** ([`sanity.py`](p3/ioc_patch/sanity.py)): hard refusals before any write. A patch is rejected if it
+   * leaks retrieval/prompt markers (`<<<IOC_…>>>`, `### [`, code fences);
+   * `create`s an existing file, or `modify`/`delete`s a missing one;
+   * replaces a non-empty file with `""`, `"None"` or `"null"`;
+   * adds a function whose body is only `pass`, `...`, `return None` or `raise NotImplementedError`
+     (checked with the AST; stubs that already existed are tolerated);
+   * shrinks a file by more than 60 %;
+   * touches more than 3 files;
+   * writes outside the target, into hidden/vendor folders, or leaves a `modify` with no change.
+3. **Apply** ([`applier.py`](p3/ioc_patch/applier.py)):
+   * Every touched file is snapshotted *before the first write of the loop*: its bytes and mode, or the fact that it did not exist.
+   * Each change is written to `<file>.ioc.tmp`. Only once all of them are staged are they `os.replace`d into place.
+4. **Validate** ([`validator.py`](p3/ioc_patch/validator.py)): runs `validate.command` from `<target>/ioc.config.yml`.
+   * `{files}` and `{py_files}` are replaced by the touched files.
+   * The default is `python -m py_compile {py_files}`.
+   * A list of commands runs as a chain.
+   * Bytecode goes to a temp prefix, so validation never writes `__pycache__` into the target.
+5. **Green**: the patch stays and the touched files are reindexed silently.
+   **Red**: the snapshot is restored and the validation log goes back to the model. After **3** failed
+   iterations the project is restored to its exact pre-loop state: created files and directories are
+   removed, deleted files are restored, and the restore is verified by hash (`rollback_verified: true`).
+
+Only one loop runs at a time (`409` otherwise). If the model is unreachable, the loop
+stops with `status: error` and nothing changes.
+
+`demo/ioc.config.yml`:
+
+```yaml
+validate:
+  command: "python -m py_compile {py_files} && python -m pytest -q -p no:cacheprovider tests"
+  timeout: 120
+```
+
+### Tested with the real models (CPU, no GPU)
+
+| Intent | Result |
+|---|---|
+| add a function whisper(name) in main.py that returns the greeting in lowercase | success, 1 attempt, ~25 s |
+| add a method count() to NoteService that returns the number of stored notes | success, 1 attempt, ~50 s |
+| rename the function shout to yell everywhere | success, 1 attempt (main.py + tests), ~70 s |
+| change greet to return 'Hi, {name}!', do not touch the tests | 3 failed validations → rolled back, tree identical |
+
+A 3B model sometimes rewrites untouched lines (quote style, the module docstring). The loop
+only guarantees that the result compiles and passes the configured validation.

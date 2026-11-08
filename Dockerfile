@@ -13,6 +13,7 @@ RUN pip install -r requirements.txt \
 
 COPY p1 ./p1
 COPY p2 ./p2
+COPY p3 ./p3
 
 EXPOSE 8000
-CMD ["python", "p2/serve.py", "/workspace"]
+CMD ["python", "p3/serve.py", "/workspace"]
