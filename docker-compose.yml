@@ -49,6 +49,7 @@ services:
       IOC_EMBED_CACHE: /data/models          # all-MiniLM-L6-v2 is downloaded here once, then used offline
       IOC_WATCH_MODE: polling                # inotify is unreliable on bind mounts (btrfs/overlay)
       OLLAMA_URL: http://ollama:11434
+      IOC_AUTOCOMMIT: ${IOC_AUTOCOMMIT:-0}   # bonus: git-commit validated patches (target must be a git repo root)
     volumes:
       - ${IOC_TARGET_DIR:-./demo}:/workspace
       - ioc-data:/data
