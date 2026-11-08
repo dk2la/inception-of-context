@@ -1,0 +1,8 @@
+chromadb==1.5.9
+fastapi==0.162.2
+uvicorn[standard]==0.54.0
+watchdog==7.1.0
+rank-bm25==0.2.2
+PyYAML>=6.0.2
+httpx==0.28.1
+pytest>=8.3

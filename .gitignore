@@ -1,0 +1,23 @@
+# Never commit model weights, embedding archives or a populated vector store.
+.ioc-data/
+.chroma/
+chroma/
+models/
+*.onnx
+*.gguf
+*.safetensors
+*.bin
+onnx.tar.gz
+.ollama/
+
+# Patch-loop temporaries
+*.ioc.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+.env

@@ -1,0 +1,10 @@
+.git
+.ioc-data
+.chroma
+.venv
+venv
+**/__pycache__
+**/.pytest_cache
+demo
+*.md
+!README.md

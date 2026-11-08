@@ -1,0 +1,7 @@
+# IoC configuration of the target project.
+# The validation command runs from the target root after every applied patch.
+#   {files}     -> every file touched by the patch that still exists
+#   {py_files}  -> the Python subset of {files}
+validate:
+  command: "python -m py_compile {py_files} && python -m pytest -q -p no:cacheprovider tests"
+  timeout: 120
