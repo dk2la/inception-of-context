@@ -10,6 +10,7 @@ textual intent into a validated patch that rolls back on failure.
 | 1 | [`p1/`](p1) | Logical chunking (AST), local embeddings (all-MiniLM-L6-v2), persistent ChromaDB, incremental watcher, dashboard *Overview* + *Files* |
 | 2 | [`p2/`](p2) | Architect API (FastAPI): `/context` hybrid retrieval (Chroma + BM25), `/ask` grounded Q&A with a local `qwen2.5:3b`, dashboard *ChromaDB Explorer* + *Ask & Retrieve* |
 | 3 | [`p3/`](p3) | Patch loop: `qwen2.5-coder:3b` writes a JSON patch, which is sanity-checked, applied atomically, validated by `ioc.config.yml`, retried up to 3 times, then committed or rolled back byte-for-byte. Dashboard *Patch Loop* |
+| ★ | [`bonus/`](bonus) | `POST /reindex`, dry-run diffs, auto `git commit` with a model-written message, visual diff + git log tab |
 | — | [`demo/`](demo) | The target project: a tiny notes app with its own `ioc.config.yml` |
 
 ## Quick start
@@ -237,3 +238,28 @@ validate:
 
 A 3B model sometimes rewrites untouched lines (quote style, the module docstring). The loop
 only guarantees that the result compiles and passes the configured validation.
+
+## Bonus
+
+`python bonus/serve.py [target]` (or `make bonus`) runs the full system plus:
+
+* **`POST /reindex[?reset=true]`**: an on-demand reindex. It is incremental by default;
+  `reset=true` drops the collection and re-embeds everything.
+* **Dry-run mode**: `POST /patch/dry-run {intent, k}` generates and sanity-checks a patch
+  and returns a unified diff per file. The disk is never touched.
+* **Auto git commit** (`IOC_AUTOCOMMIT=1`): every validated patch is committed in the
+  target repository, with a one-line message written by the local model from the patch
+  summary. If the target is not the root of a git repository, the commit is skipped and
+  the reason is reported.
+  * `make bonus` creates `.ioc-data/demo-repo`, a git copy of `demo/` (git-ignored), and starts
+    the stack on it with auto-commit enabled.
+* **Richer dashboard**: the *Diff & Git* tab shows
+  * a dry-run with a coloured diff;
+  * the diff of the last committed patch and its commit;
+  * reindex buttons and the target's git log.
+
+  Patch-loop steps already stream live (NDJSON), and validation results are pushed to the
+  SSE activity feed.
+
+Not implemented: the Docker SDK log watcher. It would need the Docker socket mounted into the
+container, i.e. root on the host, which defeats the isolation the subject asks for.

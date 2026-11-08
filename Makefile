@@ -7,12 +7,12 @@ export IOC_PART ?= p3
 COMPOSE := docker compose
 PY ?= .venv/bin/python
 
-.PHONY: help up down restart logs ps build index models test clean reset-demo dev dev-index dev-test
+.PHONY: bonus demo-repo help up down restart logs ps build index models test clean reset-demo dev dev-index dev-test
 
 help:            ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
 
-up: build        ## build and start the stack (IOC_PART=p1|p2|p3), dashboard on http://localhost:$(IOC_PORT)
+up: build        ## build and start the stack (IOC_PART=p1|p2|p3|bonus), dashboard on http://localhost:$(IOC_PORT)
 	$(COMPOSE) up -d
 	@echo "Dashboard: http://localhost:$(IOC_PORT)  (part: $(IOC_PART))"
 	@echo "First start pulls the two 3B models (~2 GB each) and the embedding model once: \`make logs\` to follow."
@@ -38,7 +38,16 @@ index:           ## one-shot index of the target inside the container
 	$(COMPOSE) run --rm --no-deps ioc python p1/index.py /workspace
 
 test: build      ## run the test suites inside the container
-	$(COMPOSE) run --rm --no-deps -v $(CURDIR)/demo:/app/demo:ro ioc python -m pytest -q -p no:cacheprovider p1/tests p2/tests p3/tests
+	$(COMPOSE) run --rm --no-deps -v $(CURDIR)/demo:/app/demo:ro ioc python -m pytest -q -p no:cacheprovider p1/tests p2/tests p3/tests bonus/tests
+
+bonus:           ## full system + bonus, auto-committing into a git copy of the demo (.ioc-data/demo-repo)
+	$(MAKE) demo-repo
+	IOC_PART=bonus IOC_AUTOCOMMIT=1 IOC_TARGET_DIR=$(CURDIR)/.ioc-data/demo-repo $(MAKE) up
+
+demo-repo:       ## (re)create .ioc-data/demo-repo: a git repository copy of demo/ (git-ignored)
+	rm -rf .ioc-data/demo-repo && mkdir -p .ioc-data && cp -r demo .ioc-data/demo-repo
+	cd .ioc-data/demo-repo && git init -q && git add -A && \
+	  git -c user.name=ioc -c user.email=ioc@localhost commit -qm "demo: initial state"
 
 clean:           ## stop and delete volumes (index + cached models)
 	$(COMPOSE) down -v --remove-orphans
@@ -57,4 +66,4 @@ dev-index: .venv ## index the demo locally once
 	$(PY) p1/index.py demo
 
 dev-test: .venv  ## run tests locally
-	$(PY) -m pytest -q -p no:cacheprovider p1/tests p2/tests p3/tests
+	$(PY) -m pytest -q -p no:cacheprovider p1/tests p2/tests p3/tests bonus/tests
