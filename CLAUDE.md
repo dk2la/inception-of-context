@@ -1,3 +1,9 @@
+## Project
+
+Inception-of-Context (42 subject): a local, offline indexer + RAG + patch loop over a small calculator Target Project. The agreed design and build order are in `docs/plan.md`; read it before writing code.
+
+Keep code as short and plain as possible, readable by anyone who has written basic Python (see `docs/adr/0001-simplicity-first.md`).
+
 ## Agent skills
 
 ### Issue tracker
