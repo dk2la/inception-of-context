@@ -12,6 +12,7 @@ RUN pip install -r requirements.txt \
  && chmod -R 0777 /data /home/ioc
 
 COPY p1 ./p1
+COPY p2 ./p2
 
 EXPOSE 8000
-CMD ["python", "p1/index.py", "/workspace", "--serve"]
+CMD ["python", "p2/serve.py", "/workspace"]

@@ -1,18 +1,54 @@
 name: ioc
 
+x-models: &models
+  IOC_ASK_MODEL: ${IOC_ASK_MODEL:-qwen2.5:3b}
+  IOC_CODE_MODEL: ${IOC_CODE_MODEL:-qwen2.5-coder:3b}
+
 services:
+  ollama:
+    image: ollama/ollama:0.40.15
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    # NVIDIA GPU (optional): uncomment
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{driver: nvidia, count: all, capabilities: [gpu]}]
+
+  # One-shot: pulls the two 3B models the first time, then just checks they are there (works offline).
+  models:
+    image: ollama/ollama:0.40.15
+    depends_on:
+      ollama: {condition: service_healthy}
+    environment:
+      <<: *models
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c", "for m in $$IOC_ASK_MODEL $$IOC_CODE_MODEL; do ollama show $$m >/dev/null 2>&1 && echo \"$$m present\" || ollama pull $$m || exit 1; done"]
+    restart: "no"
+
   ioc:
     build: .
     image: ioc-architect:local
-    command: ["python", "p1/index.py", "/workspace", "--serve"]
+    command: ["python", "${IOC_PART:-p2}/serve.py", "/workspace"]
     user: "${IOC_UID:-1000}:${IOC_GID:-1000}"
+    depends_on:
+      ollama: {condition: service_healthy}
+      models: {condition: service_completed_successfully}
     ports:
       - "${IOC_PORT:-8000}:8000"
     environment:
+      <<: *models
       IOC_TARGET: /workspace
       IOC_CHROMA_PATH: /data/chroma          # outside the target: the watcher never sees its own writes
       IOC_EMBED_CACHE: /data/models          # all-MiniLM-L6-v2 is downloaded here once, then used offline
       IOC_WATCH_MODE: polling                # inotify is unreliable on bind mounts (btrfs/overlay)
+      OLLAMA_URL: http://ollama:11434
     volumes:
       - ${IOC_TARGET_DIR:-./demo}:/workspace
       - ioc-data:/data
@@ -20,3 +56,4 @@ services:
 
 volumes:
   ioc-data:
+  ollama:
