@@ -168,3 +168,40 @@ def test_find_symbol_lists_every_match_in_path_and_line_order(temp_index):
     index_files(temp_index, {"b.py": "def run():\n    pass\n", "a.py": "class A:\n    def run(self):\n        pass\n\n\ndef run():\n    pass\n"})
     found = ask.find_symbol("run")
     assert [(c["path"], c["name"]) for c in found] == [("a.py", "A.run"), ("a.py", "run"), ("b.py", "run")]
+
+
+# --- symbols_in_file ---
+
+CORE_METHODS = ["Calculator.add", "Calculator.subtract", "Calculator.multiply", "Calculator.divide"]
+
+
+def test_symbols_in_core_py_are_exactly_the_four_methods_in_source_order(client):
+    assert [c["name"] for c in ask.symbols_in_file("core.py")] == CORE_METHODS
+
+
+def test_symbols_in_file_accepts_the_full_path(client):
+    assert [c["name"] for c in ask.symbols_in_file("calculator/core.py")] == CORE_METHODS
+
+
+def test_symbols_in_file_leaves_out_classes(client):
+    assert "class" not in [c["kind"] for c in ask.symbols_in_file("core.py")]
+
+
+def test_symbols_in_file_does_not_match_a_longer_file_name(temp_index):
+    index_files(temp_index, {"hardcore.py": "def x():\n    pass\n", "core.py": "def y():\n    pass\n"})
+    assert [c["name"] for c in ask.symbols_in_file("core.py")] == ["y"]
+
+
+def test_symbols_in_file_of_a_missing_file_is_empty(client):
+    assert ask.symbols_in_file("nope.py") == []
+
+
+def test_symbols_in_file_ignores_backticks_and_spaces(client):
+    assert ask.symbols_in_file("`core.py`") == ask.symbols_in_file("core.py")
+    assert ask.symbols_in_file(" `core.py` ") == ask.symbols_in_file("core.py")
+
+
+def test_symbols_in_file_shows_both_files_that_share_a_short_name(temp_index):
+    index_files(temp_index, {"a/utils.py": "def one():\n    pass\n", "b/utils.py": "def two():\n    pass\n"})
+    found = ask.symbols_in_file("utils.py")
+    assert [(c["path"], c["name"]) for c in found] == [("a/utils.py", "one"), ("b/utils.py", "two")]
