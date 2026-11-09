@@ -169,3 +169,35 @@ def test_watcher_ignores_the_opened_events_that_reading_a_file_causes_on_linux(t
     for event in [FileOpenedEvent(path), FileClosedNoWriteEvent(path)]:
         index.Handler().on_any_event(event)
     assert index.EVENTS == []
+
+
+def test_renaming_a_file_removes_the_old_path_and_indexes_the_new_one(temp_index, monkeypatch):
+    """Slower test: real filesystem events."""
+    monkeypatch.setattr(index, "EVENTS", [])
+    observer = index.watch(temp_index)
+    try:
+        write(temp_index, "old.py", "def a():\n    return 1\n")
+        assert wait_until(lambda: happened("indexed", "old.py"))
+        os.rename(os.path.join(temp_index, "old.py"), os.path.join(temp_index, "new.py"))
+        assert wait_until(lambda: happened("deleted", "old.py") and happened("indexed", "new.py"))
+        assert chunks_of("old.py") == []
+        assert len(chunks_of("new.py")) > 0
+    finally:
+        observer.stop()
+        observer.join()
+
+
+def test_replacing_a_file_through_an_ioc_tmp_file_reindexes_the_real_file_only(temp_index, monkeypatch):
+    """Slower test: real filesystem events. This is how the Patch Loop writes files."""
+    monkeypatch.setattr(index, "EVENTS", [])
+    observer = index.watch(temp_index)
+    try:
+        write(temp_index, "x.py", "def x():\n    return 1\n")
+        assert wait_until(lambda: happened("indexed", "x.py"))
+        write(temp_index, "x.py.ioc.tmp", "def x():\n    return 1\n\n\ndef y():\n    return 2\n")
+        os.replace(os.path.join(temp_index, "x.py.ioc.tmp"), os.path.join(temp_index, "x.py"))
+        assert wait_until(lambda: any(e["path"] == "x.py" and e["chunks"] == 2 for e in index.EVENTS))
+        assert not any("ioc.tmp" in e["path"] for e in index.EVENTS)
+    finally:
+        observer.stop()
+        observer.join()
