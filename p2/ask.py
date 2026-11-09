@@ -139,8 +139,32 @@ def route_question(question):
     return None
 
 
+def answer_from_index(kind, value):
+    """Answer a symbol question from the Index alone. The text is built from facts, so nothing is invented."""
+    if kind == "has_function":
+        chunks = find_symbol(value)
+        if chunks:
+            places = [f"- {c['kind'].replace('_', ' ')} {c['name']} in {c['path']}, lines {c['start_line']}-{c['end_line']}"
+                      for c in chunks]
+            answer = f'Yes. "{value}" exists:\n' + "\n".join(places)
+        else:
+            answer = f'No. There is no function or method named "{value}" in the Target Project.'
+    else:  # "file_functions"
+        chunks = symbols_in_file(value)
+        lines = []
+        for path in sorted({c["path"] for c in chunks}):  # the full path, even if the user typed "core.py"
+            names = [c["name"] for c in chunks if c["path"] == path]
+            noun = "function" if len(names) == 1 else "functions"
+            lines.append(f"{path} defines {len(names)} {noun}: {', '.join(names)}.")
+        answer = "\n".join(lines) or f'I found no functions in a file named "{value}".'
+    return {"answer": answer, "sources": chunks, "used_llm": False}
+
+
 def ask(question, k=5):
     """Answer one Question (no history). Return {"answer", "sources", "used_llm"}."""
+    routed = route_question(question)
+    if routed:  # "is there a function X?" and "what functions are in Y?" never reach the model
+        return answer_from_index(*routed)
     chunks = search.search(question, k)
     if not chunks:  # nothing to ground an answer on, and a model without context invents things
         return {"answer": "The Index is empty, so I cannot answer yet.", "sources": [], "used_llm": False}
