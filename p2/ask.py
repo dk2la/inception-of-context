@@ -104,11 +104,26 @@ HAS_FUNCTION_PATTERNS = [
     r"does (?:a |the |any )?(?:function|method) " + NAME + " exists?" + END,
 ]
 
+# A file name needs an extension, so "what functions are in the project?" is not about a file called "project".
+FILE = r"`?([\w./-]+\.\w+)`?"
+IN_FILE = r"(?:in|inside|from|of) (?:the )?(?:file )?" + FILE + r"\W*$"
+FILE_FUNCTIONS_PATTERNS = [
+    r"(?:what|which) (?:functions|methods) (?:are |exist )?(?:there )?(?:defined )?" + IN_FILE,
+    r"(?:what|which) (?:functions|methods) (?:does|do) (?:the )?(?:file )?" + FILE + r" (?:have|contain|define)\W*$",
+    r"what are (?:all )?the (?:functions|methods) (?:defined )?" + IN_FILE,
+    r"(?:list|show)(?: me)? (?:all )?(?:the )?(?:functions|methods) " + IN_FILE,
+]
+
 
 def route_question(question):
-    """Recognise a symbol question: ("has_function", name), or None for any other Question."""
-    for pattern in HAS_FUNCTION_PATTERNS:
-        match = re.search(pattern, question.strip(), re.IGNORECASE)
-        if match:
-            return "has_function", match.group(1)
+    """Recognise a symbol question: ("has_function", name), ("file_functions", filename) or None.
+
+    None means any other Question, which goes to the model.
+    """
+    question = question.strip()
+    for kind, patterns in [("has_function", HAS_FUNCTION_PATTERNS), ("file_functions", FILE_FUNCTIONS_PATTERNS)]:
+        for pattern in patterns:
+            match = re.search(pattern, question, re.IGNORECASE)
+            if match:
+                return kind, match.group(1)
     return None
