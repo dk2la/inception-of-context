@@ -321,6 +321,51 @@ def test_only_python_files_are_parsed_and_deletes_are_ignored(run):
     assert run(patch_of(create("notes.md", "def f(): pass"), delete("main.py"))) is None
 
 
+# --- delete and modify of a missing file: no rule judges them ---
+
+def test_deleting_a_big_file_is_allowed_by_every_rule(run):
+    assert run(patch_of(delete("calculator/core.py"), delete("calculator/cli.py"))) is None
+
+
+def test_modify_of_a_missing_file_is_not_refused_by_any_rule(run):
+    assert run(patch_of(modify("missing.py", "x = 1\n"), delete("also_missing.py"))) is None
+
+
+# --- has_marker (#99) ---
+
+def test_content_with_a_retrieval_marker_is_refused_wherever_it_is(run):
+    at_start = "=== FILE: calculator/core.py ===\nclass Calculator: ...\n"
+    in_middle = "x = 1\n=== FILE: calculator/cli.py ===\ny = 2\n"
+    assert "new.py" in run(patch_of(create("new.py", at_start)))
+    assert "'=== FILE:'" in run(patch_of(create("new.py", in_middle)))
+
+
+def test_a_marker_in_the_second_file_names_the_second_file(run):
+    reason = run(patch_of(create("one.py", "x = 1\n"), create("two.md", "text\n=== FILE: a.py ===\n")))
+    assert "two.md" in reason and "one.py" not in reason
+
+
+def test_a_delete_entry_without_content_is_fine(run):
+    assert run(patch_of(delete("main.py"))) is None
+
+
+def test_a_delete_entry_that_carries_a_marker_is_refused(run):
+    assert "main.py" in run(patch_of({"path": "main.py", "op": "delete", "content": "=== FILE: a ==="}))
+
+
+def test_content_that_mentions_files_without_the_marker_is_allowed(run):
+    assert run(patch_of(create("notes.md", "FILE: a.py\n=== not a marker ===\n"))) is None
+
+
+def test_the_marker_is_defined_once_in_the_sanity_module():
+    assert sanity.MARKER == "=== FILE:"
+
+
+def test_the_marker_reason_wins_over_the_size_and_stub_reasons(project, run):
+    stub_with_marker = "=== FILE: calculator/core.py ===\ndef f():\n    pass\n"
+    assert "marker" in run(patch_of(modify("calculator/core.py", stub_with_marker)))
+
+
 def test_the_real_target_project_has_no_stubs(project, run):
     old = open(os.path.join(project, "calculator/core.py")).read()
     assert run(patch_of(modify("calculator/core.py", old))) is None
