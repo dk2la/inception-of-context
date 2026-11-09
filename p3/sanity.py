@@ -8,6 +8,7 @@ import os
 
 MAX_FILES = 3
 MAX_SHRINK = 60  # percent
+MARKER = "=== FILE:"  # the line that starts each file in the Patch prompt; it must never reach a file
 
 
 def outside_target(patch, target_dir):
@@ -32,6 +33,14 @@ def too_many_files(patch, target_dir):
     count = len(patch["files"])
     if count > MAX_FILES:
         return f"patch touches {count} files, the limit is {MAX_FILES}"
+    return None
+
+
+def has_marker(patch, target_dir):
+    """Refuse content with the prompt's file marker in it: the model copied its input."""
+    for entry in patch["files"]:
+        if MARKER in (entry.get("content") or ""):
+            return f"retrieval marker '{MARKER}' found in {entry['path']}"
     return None
 
 
@@ -63,7 +72,7 @@ def empties_file(patch, target_dir):
 
 
 def shrinks_too_much(patch, target_dir):
-    """Refuse to modify a file into less than 40 % of its length: the model probably left out most of it."""
+    """Refuse a modify that cuts a file by more than MAX_SHRINK percent: the model probably left out most of it."""
     for entry in patch["files"]:
         if entry.get("op") != "modify":
             continue
@@ -111,8 +120,10 @@ def stub_function(patch, target_dir):
 
 
 # outside_target must stay first: the rules after it read files from disk and trust the paths are inside.
-RULES = [outside_target, touches_config, too_many_files, creates_existing, empties_file, shrinks_too_much,
-         stub_function]
+# Then the cheap rules that only look at the Patch, then the ones that read files (empties_file before
+# shrinks_too_much, so "replaced by nothing" gets its more specific reason), then the one that parses code.
+RULES = [outside_target, touches_config, too_many_files, has_marker,
+         creates_existing, empties_file, shrinks_too_much, stub_function]
 
 
 def check_patch(patch, target_dir):
