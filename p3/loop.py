@@ -79,3 +79,31 @@ def restore_snapshot(snapshot):
                 f.write(data)
         elif os.path.exists(path):
             os.remove(path)
+
+
+def apply_patch(patch):
+    """Write the Patch to disk and return the paths it touched.
+
+    New contents go to <file>.ioc.tmp first and are swapped in with os.replace only when all of them
+    are written, so a file is never left half written. Deletes come last.
+    """
+    paths = []
+    try:
+        for entry in patch["files"]:
+            if entry["op"] != "delete":
+                path = full_path(entry["path"])
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                paths.append(path)
+                with open(path + ".ioc.tmp", "w", encoding="utf-8") as f:
+                    f.write(entry["content"])
+        for path in paths:
+            os.replace(path + ".ioc.tmp", path)
+    except Exception:
+        for path in paths:
+            if os.path.exists(path + ".ioc.tmp"):
+                os.remove(path + ".ioc.tmp")
+        raise
+    for entry in patch["files"]:
+        if entry["op"] == "delete":
+            os.remove(full_path(entry["path"]))
+    return [entry["path"] for entry in patch["files"]]
