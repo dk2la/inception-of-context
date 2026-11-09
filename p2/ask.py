@@ -80,3 +80,13 @@ def find_symbol(name):
     """The Chunks of every function, method or class called name ("divide" finds "Calculator.divide")."""
     kinds = ["function", "async_function", "method", "class"]
     return [c for c in symbol_chunks(kinds) if c["name"] == name or c["name"].endswith("." + name)]
+
+
+def symbols_in_file(filename):
+    """The Chunks of every function and method in the file(s) called filename, in source order.
+
+    "core.py" finds "calculator/core.py" too, but not "hardcore.py". Classes are left out.
+    """
+    filename = filename.strip().strip("`")
+    chunks = symbol_chunks(["function", "async_function", "method"])
+    return [c for c in chunks if c["path"] == filename or c["path"].endswith("/" + filename)]
