@@ -87,3 +87,58 @@ def test_other_questions_about_a_file_are_left_to_the_model(question):
 def test_the_two_kinds_of_question_do_not_get_mixed_up():
     assert route_question("Is there a function power?") == ("has_function", "power")
     assert route_question("Is there a function in core.py?") is None
+
+
+# --- the same questions in Russian ---
+
+
+@pytest.mark.parametrize("question, name", [
+    ("Есть ли функция power?", "power"),
+    ("есть ли метод divide", "divide"),
+    ("Есть ли в проекте функция sqrt?", "sqrt"),
+    ("Есть ли в коде функция sqrt?", "sqrt"),
+    ("Есть ли в этом проекте функция sqrt?", "sqrt"),
+    ("Существует ли функция add?", "add"),
+    ("существует ли метод `divide`", "divide"),
+    ("ЕСТЬ ЛИ ФУНКЦИЯ Multiply?", "Multiply"),
+    ("Есть ли функцию power", "power"),
+    ("Есть ли у нас функция power?", "power"),
+    ("Есть ли функция power в проекте?", "power"),
+    ("Есть ли метод Calculator.divide?", "Calculator.divide"),
+    ("Есть ли в файле core.py функция divide?", "divide"),
+])
+def test_russian_is_there_a_function_is_recognised(question, name):
+    assert route_question(question) == ("has_function", name)
+
+
+@pytest.mark.parametrize("question, filename", [
+    ("Какие функции есть в файле core.py?", "core.py"),
+    ("какие методы в calculator/cli.py", "calculator/cli.py"),
+    ("Покажи функции в файле main.py.", "main.py"),
+    ("Какие функции в core.py", "core.py"),
+    ("Какие методы есть в `core.py`?", "core.py"),
+    ("Какие функции определены в файле core.py?", "core.py"),
+    ("Какие функции содержит файл core.py?", "core.py"),
+    ("Список функций в core.py", "core.py"),
+    ("Перечисли все функции из файла core.py", "core.py"),
+    ("Выведи методы в core.py", "core.py"),
+    ("КАКИЕ ФУНКЦИИ В Core.py?", "Core.py"),
+])
+def test_russian_what_functions_are_in_a_file_is_recognised(question, filename):
+    assert route_question(question) == ("file_functions", filename)
+
+
+@pytest.mark.parametrize("question", [
+    "Как работает деление на ноль?",
+    "Что делает функция divide?",
+    "Объясни файл core.py",
+    "Есть ли функция, которая делит числа?",
+    "Есть ли функция которая делит числа",
+    "Есть ли тесты?",
+    "Какие функции вызывает main.py?",
+    "Какие функции в проекте?",
+    "Какие функции есть в core.py и что они делают?",
+    "Что делает функция в cli.py?",
+])
+def test_other_russian_questions_are_left_to_the_model(question):
+    assert route_question(question) is None
