@@ -33,13 +33,18 @@ def _build_bm25(collection):
     global _bm25, _bm25_ids, _bm25_version, _bm25_collection
     stored = collection.get()
     _bm25_ids = stored["ids"]
-    _bm25 = BM25Okapi([tokenize(text) for text in stored["documents"]]) if _bm25_ids else None  # it fails on no documents
+    _bm25 = None
+    if _bm25_ids:  # BM25Okapi fails on no documents
+        _bm25 = BM25Okapi([tokenize(text) for text in stored["documents"]])
     _bm25_version = index.INDEX_VERSION
     _bm25_collection = collection
 
 
 def bm25_search(query):
-    """Rank every Chunk by keywords (BM25). Return the ids, best first. The BM25 index is rebuilt only after the Index changed."""
+    """Rank every Chunk by keywords (BM25). Return the ids, best first.
+
+    The BM25 index is rebuilt only when the Index changed (a new version, or another Index).
+    """
     collection = index.get_collection()
     if index.INDEX_VERSION != _bm25_version or collection is not _bm25_collection:
         _build_bm25(collection)
@@ -67,7 +72,7 @@ def search(query, k):
     if not top_ids:
         return []  # empty Index or k <= 0; Chroma refuses to get no ids
 
-    found =index.get_collection().get(ids=top_ids)  # Chroma may return them in any order
+    found = index.get_collection().get(ids=top_ids)  # Chroma may return them in any order
     by_id = dict(zip(found["ids"], zip(found["documents"], found["metadatas"])))
     results = []
     for chunk_id in top_ids:
