@@ -1,8 +1,6 @@
 """Part 3 extends the Part 2 app: it is the same app, with the Patch route added."""
-from fastapi import HTTPException
 from pydantic import BaseModel
 
-from p2 import ask
 from p2.app import app
 from p3 import loop
 
@@ -15,8 +13,8 @@ class PatchRequest(BaseModel):
 
 @app.post("/patch")
 def patch(req: PatchRequest):
-    """Run the Patch Loop. A plain def (not async def), so the server answers other requests meanwhile."""
-    try:
-        return loop.run_patch_loop(req.intent, req.k, req.max_attempts)
-    except ask.LLMError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    """Run the Patch Loop. A plain def (not async def), so the server answers other requests meanwhile.
+
+    If the model is unreachable, the app-wide LLMError handler in p2/app.py answers 503.
+    """
+    return loop.run_patch_loop(req.intent, req.k, req.max_attempts)
