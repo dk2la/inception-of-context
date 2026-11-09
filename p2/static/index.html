@@ -2,9 +2,94 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Inception-of-Context</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 0 auto; padding: 16px; color: #222; }
+  h1 { margin: 0 0 12px; font-size: 1.5rem; }
+  [hidden] { display: none !important; }
+  button { font: inherit; cursor: pointer; }
+  button:disabled { cursor: default; }
+  nav { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid #ddd; }
+  nav button { padding: 8px 14px; border: 0; border-bottom: 3px solid transparent; background: none; }
+  nav button.active { border-bottom-color: #2563eb; font-weight: bold; }
+  table { border-collapse: collapse; }
+  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
+  pre { margin: 0; padding: 8px; overflow-x: auto; background: #f6f6f6; }
+  #error { margin-bottom: 12px; padding: 8px; color: #b00020; background: #fdecea; white-space: pre-line; }
+  #error:empty { display: none; }
+</style>
 </head>
 <body>
 <h1>Inception-of-Context</h1>
+<div id="error"></div>
+
+<nav>
+  <button data-tab="overview">Overview</button>
+  <button data-tab="files">Files</button>
+  <button data-tab="explorer">ChromaDB Explorer</button>
+  <button data-tab="ask">Ask & Retrieve</button>
+  <button data-tab="patch">Patch Loop</button>
+</nav>
+
+<section class="tab" id="tab-overview">
+  <h2>Overview</h2>
+</section>
+
+<section class="tab" id="tab-files" hidden>
+  <h2>Files</h2>
+</section>
+
+<section class="tab" id="tab-explorer" hidden>
+  <h2>ChromaDB Explorer</h2>
+</section>
+
+<section class="tab" id="tab-ask" hidden>
+  <h2>Ask & Retrieve</h2>
+</section>
+
+<section class="tab" id="tab-patch" hidden>
+  <h2>Patch Loop</h2>
+</section>
+
+<script>
+// ---------- Helpers ----------
+
+// Calls the server and returns the JSON reply. A bad status throws an Error like "503 <detail>".
+async function api(path, options) {
+  const response = await fetch(path, options);
+  if (response.ok) return response.json();
+  const text = await response.text();
+  let detail = text;
+  try {
+    detail = JSON.parse(text).detail; // FastAPI errors look like {"detail": "..."}
+  } catch (e) {} // not JSON: keep the plain text
+  throw new Error(response.status + " " + (typeof detail === "string" ? detail : text));
+}
+
+// ---------- Tabs ----------
+
+// Tab name -> function to run each time the tab is shown.
+const tabLoaders = {};
+
+function showTab(name) {
+  for (const section of document.querySelectorAll(".tab")) {
+    section.hidden = section.id !== "tab-" + name;
+  }
+  for (const button of document.querySelectorAll("nav button")) {
+    button.classList.toggle("active", button.dataset.tab === name);
+  }
+  location.hash = name;
+  if (tabLoaders[name]) tabLoaders[name]();
+}
+
+// ---------- Start ----------
+
+for (const button of document.querySelectorAll("nav button")) {
+  button.onclick = () => showTab(button.dataset.tab);
+}
+const firstTab = location.hash.slice(1);
+showTab(document.getElementById("tab-" + firstTab) ? firstTab : "overview");
+</script>
 </body>
 </html>
