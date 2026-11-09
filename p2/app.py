@@ -1,5 +1,6 @@
 """FastAPI routes and the dashboard for Part 2."""
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from p2 import search
@@ -31,3 +32,9 @@ class AskRequest(BaseModel):
 @app.post("/ask")
 def ask_route(req: AskRequest):
     return ask.ask(req.question, req.k)
+
+
+@app.exception_handler(ask.LLMError)
+def model_unreachable(request, error):
+    """Any route that needs the model answers 503 with a readable message, not a generic 500."""
+    return JSONResponse(status_code=503, content={"detail": str(error)})
