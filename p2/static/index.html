@@ -25,6 +25,8 @@
   #file-counts th:last-child, #file-counts td:last-child { text-align: right; }
   #file-counts .total { font-weight: bold; }
   .changed { background: #fff3b0; }
+  #activity { max-height: 18em; margin: 0; padding: 4px 8px; overflow-y: auto; list-style: none; border: 1px solid #ccc; font-family: monospace; white-space: pre; }
+  #activity .deleted { color: #b00020; }
 </style>
 </head>
 <body>
@@ -48,6 +50,9 @@
     <thead><tr><th>File</th><th>Chunks</th></tr></thead>
     <tbody></tbody>
   </table>
+
+  <h3>Activity</h3>
+  <ol id="activity"></ol>
 </section>
 
 <section class="tab" id="tab-files" hidden>
@@ -183,6 +188,28 @@ function refreshOverview() {
   loadFiles();
 }
 
+// One line of the activity feed, e.g. "12:03:15  indexed  calculator/core.py  (6 chunks)".
+function formatEvent(event) {
+  const time = new Date(event.time * 1000).toLocaleTimeString(); // event.time is in seconds
+  return `${time}  ${event.type}  ${event.path}  (${event.chunks} chunks)`;
+}
+
+// Shows the Watcher's events as the server pushes them (GET /events), newest first.
+function startActivityFeed() {
+  const list = document.getElementById("activity");
+  const source = new EventSource("/events");
+  source.onopen = () => {
+    list.replaceChildren(); // the server replays all its events on every (re)connect
+    setError("feed", "");
+  };
+  source.onmessage = (message) => {
+    const event = JSON.parse(message.data);
+    list.prepend(el("li", formatEvent(event), event.type));
+    if (list.children.length > 200) list.lastElementChild.remove();
+  };
+  source.onerror = () => setError("feed", "Live feed disconnected, reconnecting...");
+}
+
 // ---------- Start ----------
 
 for (const button of document.querySelectorAll("nav button")) {
@@ -190,6 +217,7 @@ for (const button of document.querySelectorAll("nav button")) {
 }
 refreshOverview();
 setInterval(refreshOverview, 3000);
+startActivityFeed();
 const firstTab = location.hash.slice(1);
 showTab(document.getElementById("tab-" + firstTab) ? firstTab : "overview");
 </script>
