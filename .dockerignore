@@ -1,0 +1,11 @@
+.git
+.venv
+venv
+# The Target Project is mounted at /workspace when the container runs.
+target/
+__pycache__
+*.pyc
+.pytest_cache
+chroma/
+chroma_data/
+*.ioc.tmp
