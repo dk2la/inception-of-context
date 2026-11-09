@@ -7,6 +7,7 @@ import time
 import chromadb
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 
 from p1.chunker import chunk_file, is_skipped, read_text
 
@@ -135,7 +136,10 @@ class Handler(FileSystemEventHandler):
 def watch(root=None):
     """Start reindexing files as they change, in a background thread. Return the observer (stop it with .stop())."""
     root = root or TARGET_DIR
-    observer = Observer()
+    # Docker bind mounts on macOS and Windows often drop file notifications, so WATCH_POLLING=1 checks the files instead.
+    polling = os.environ.get("WATCH_POLLING") == "1"
+    observer = PollingObserver() if polling else Observer()
+    print(f"watching {root} ({'polling' if polling else 'notifications'})")
     observer.schedule(Handler(), root, recursive=True)
     observer.start()
     return observer
