@@ -126,3 +126,34 @@ def test_the_config_is_refused_by_the_runner(run):
 
 def test_files_with_similar_names_are_allowed(run):
     assert run(patch_of(create("docs/ioc.config.yml.md"), create("sub/ioc.config.yml"))) is None
+
+
+# --- too_many_files (#94) ---
+
+def files_named(count):
+    return [create(f"new{i}.py") for i in range(count)]
+
+
+@pytest.mark.parametrize("count", [1, 3])
+def test_up_to_three_files_are_allowed(run, count):
+    assert run(patch_of(*files_named(count))) is None
+
+
+def test_four_files_are_refused_with_the_count_and_the_limit(run):
+    reason = run(patch_of(*files_named(4)))
+    assert "4" in reason and "3" in reason
+
+
+def test_every_operation_counts_towards_the_limit(run):
+    patch = patch_of(create("new.py"), modify("calculator/core.py", "x = 1\n" * 100),
+                     delete("calculator/cli.py"), delete("main.py"))
+    assert "4" in run(patch)
+
+
+def test_too_many_files_can_be_called_directly(project):
+    assert isinstance(sanity.too_many_files(patch_of(*files_named(4)), project), str)
+
+
+def test_the_path_rule_runs_before_the_count(run):
+    reason = run(patch_of(*files_named(3), create("../x.py")))
+    assert "path outside target project" in reason
