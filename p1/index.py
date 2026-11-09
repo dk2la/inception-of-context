@@ -5,6 +5,8 @@ import os
 import time
 
 import chromadb
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 from p1.chunker import chunk_file, is_skipped, read_text
 
@@ -107,6 +109,32 @@ def index_all(root=None):
     for rel_path in {m["path"] for m in stored["metadatas"]} - on_disk:
         reindex_file(os.path.join(root, rel_path))
     return get_collection().count()
+
+
+class Handler(FileSystemEventHandler):
+    """The Observer calls this for every change inside the Target Project."""
+
+    def on_any_event(self, event):
+        # Reading a file makes Linux report "opened" events too; reacting to them would loop forever.
+        if event.is_directory or event.event_type not in ("created", "modified", "deleted", "moved"):
+            return
+        rel_path = os.path.relpath(event.src_path, TARGET_DIR).replace(os.sep, "/")
+        if is_skipped(rel_path):
+            return
+        try:  # one broken file must never stop the Watcher
+            chunks = reindex_file(event.src_path)
+            add_event("indexed" if os.path.exists(event.src_path) else "deleted", rel_path, chunks)
+        except Exception as error:
+            print(f"watcher: could not handle {rel_path}: {error}")
+
+
+def watch(root=None):
+    """Start reindexing files as they change, in a background thread. Return the observer (stop it with .stop())."""
+    root = root or TARGET_DIR
+    observer = Observer()
+    observer.schedule(Handler(), root, recursive=True)
+    observer.start()
+    return observer
 
 
 def main():
