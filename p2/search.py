@@ -1,5 +1,12 @@
 """Retrieval: rank the whole Index by meaning and by keywords, then merge the two rankings."""
+import re
+
 from p1 import index
+
+
+def tokenize(text):
+    """Lowercase words and numbers. Punctuation and underscores split words: divide_by_zero -> 3 words."""
+    return re.findall(r"[a-z0-9]+", text.lower())
 
 
 def vector_search(query):
