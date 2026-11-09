@@ -24,9 +24,17 @@
   .card strong { overflow-wrap: anywhere; }
   #file-counts th:last-child, #file-counts td:last-child { text-align: right; }
   #file-counts .total { font-weight: bold; }
-  .changed { background: #fff3b0; }
+  .changed, .highlight { background: #fff3b0; }
   #activity { max-height: 18em; margin: 0; padding: 4px 8px; overflow-y: auto; list-style: none; border: 1px solid #ccc; font-family: monospace; white-space: pre; }
   #activity .deleted { color: #b00020; }
+  .split { display: flex; gap: 16px; align-items: flex-start; }
+  #file-list { display: flex; flex-direction: column; gap: 2px; min-width: 200px; }
+  #file-list button { text-align: left; }
+  #file-view { flex: 1; min-width: 0; }
+  #chunk-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+  #file-content { max-height: 70vh; overflow: auto; padding: 0; font-family: monospace; }
+  .line { width: max-content; min-width: 100%; }
+  .number { display: inline-block; width: 3em; margin-right: 1em; text-align: right; color: #999; user-select: none; }
 </style>
 </head>
 <body>
@@ -57,6 +65,13 @@
 
 <section class="tab" id="tab-files" hidden>
   <h2>Files</h2>
+  <div class="split">
+    <div id="file-list"></div>
+    <div id="file-view">
+      <div id="chunk-chips"></div>
+      <pre id="file-content"></pre>
+    </div>
+  </div>
 </section>
 
 <section class="tab" id="tab-explorer" hidden>
@@ -106,7 +121,7 @@ function setError(name, message) {
 // ---------- Tabs ----------
 
 // Tab name -> function to run each time the tab is shown.
-const tabLoaders = {};
+const tabLoaders = {files: loadFileList};
 
 function showTab(name) {
   for (const section of document.querySelectorAll(".tab")) {
@@ -177,9 +192,9 @@ async function loadFiles() {
       tbody.append(row(["Total", total], "total"));
     }
     lastCounts = counts;
-    setError("files", "");
+    setError("file-counts", "");
   } catch (e) {
-    setError("files", "Cannot load the file list: " + e.message);
+    setError("file-counts", "Cannot load Chunks per file: " + e.message);
   }
 }
 
@@ -208,6 +223,65 @@ function startActivityFeed() {
     if (list.children.length > 200) list.lastElementChild.remove();
   };
   source.onerror = () => setError("feed", "Live feed disconnected, reconnecting...");
+}
+
+// ---------- Files ----------
+
+let selectedPath = null; // the file shown in the Files tab; kept when the user leaves and comes back
+
+// Lists the indexed files as buttons, then reopens the file that was selected before.
+async function loadFileList() {
+  try {
+    const files = await api("/files");
+    const list = document.getElementById("file-list");
+    list.replaceChildren();
+    for (const file of files) {
+      const button = el("button", file.path);
+      button.onclick = () => showFile(file.path);
+      list.append(button);
+    }
+    setError("file-list", "");
+    if (selectedPath) showFile(selectedPath);
+  } catch (e) {
+    setError("file-list", "Cannot load the file list: " + e.message);
+  }
+}
+
+// Shows one file line by line, with one chip per Chunk.
+async function showFile(path) {
+  try {
+    const file = await api("/file?path=" + encodeURIComponent(path));
+    selectedPath = path;
+    const content = document.getElementById("file-content");
+    content.replaceChildren();
+    const lines = file.content.split("\n");
+    if (lines[lines.length - 1] === "") lines.pop(); // the last newline does not start another line
+    lines.forEach((text, index) => {
+      const line = el("div", "", "line");
+      line.append(el("span", index + 1, "number"), el("span", text));
+      content.append(line);
+    });
+    const chips = document.getElementById("chunk-chips");
+    chips.replaceChildren();
+    for (const chunk of file.chunks) {
+      const chip = el("button", `${chunk.name}  ${chunk.start_line}–${chunk.end_line}  ${chunk.kind}`);
+      chip.onclick = () => highlightChunk(chunk);
+      chips.append(chip);
+    }
+    setError("file", "");
+  } catch (e) {
+    setError("file", "Cannot load " + path + ": " + e.message);
+  }
+}
+
+// Marks the lines of one Chunk. Line numbers start at 1 and the range includes both ends.
+function highlightChunk(chunk) {
+  const lines = document.querySelectorAll("#file-content .line");
+  lines.forEach((line, index) => {
+    const number = index + 1;
+    line.classList.toggle("highlight", number >= chunk.start_line && number <= chunk.end_line);
+  });
+  lines[chunk.start_line - 1]?.scrollIntoView({block: "center"});
 }
 
 // ---------- Start ----------
