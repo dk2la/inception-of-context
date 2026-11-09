@@ -35,7 +35,7 @@ def cut(lines, start, end):
     return "\n".join(lines[start - 1 : end])
 
 
-def start_line(node):
+def first_line(node):
     """The first line of a function or class: its topmost decorator, or the def/class line."""
     return min([node.lineno] + [d.lineno for d in node.decorator_list])
 
@@ -120,13 +120,13 @@ def chunk_python(path, text):
             kind = "class"
         else:
             continue
-        start, end = start_line(node), node.end_lineno
+        start, end = first_line(node), node.end_lineno
         covered.update(range(start, end + 1))
         chunks.append(make_chunk(path, start, end, node.name, kind, cut(lines, start, end)))
         if kind == "class":
             for item in node.body:
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    start, end = start_line(item), item.end_lineno
+                    start, end = first_line(item), item.end_lineno
                     name = node.name + "." + item.name
                     chunks.append(make_chunk(path, start, end, name, "method", cut(lines, start, end)))
 
