@@ -35,7 +35,7 @@ def client(temp_index):
     from fastapi.testclient import TestClient
 
     from p1 import index
-    from p2.app import app
+    from p3.app import app
 
     shutil.copytree(REAL_TARGET, temp_index, dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
