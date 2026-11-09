@@ -1,6 +1,7 @@
 """Answering Questions, and the one function that talks to the local model."""
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 
@@ -90,3 +91,24 @@ def symbols_in_file(filename):
     filename = filename.strip().strip("`")
     chunks = symbol_chunks(["function", "async_function", "method"])
     return [c for c in chunks if c["path"] == filename or c["path"].endswith("/" + filename)]
+
+
+# Symbol questions are recognised with these patterns, one phrasing each. To teach the router a new
+# phrasing, add one line to a list. The first capturing group of a pattern is the name asked about.
+# A pattern must reach the end of the question (only "in the project", "?" or "." may follow the name),
+# so "is there a function that divides numbers?" is not mistaken for a function called "that".
+NAME = r"`?(\w+(?:\.\w+)*)`?"
+END = r"(?: in .*)?\W*$"
+HAS_FUNCTION_PATTERNS = [
+    r"is there (?:a |an |any )?(?:function|method) (?:called |named )?" + NAME + END,
+    r"does (?:a |the |any )?(?:function|method) " + NAME + " exists?" + END,
+]
+
+
+def route_question(question):
+    """Recognise a symbol question: ("has_function", name), or None for any other Question."""
+    for pattern in HAS_FUNCTION_PATTERNS:
+        match = re.search(pattern, question.strip(), re.IGNORECASE)
+        if match:
+            return "has_function", match.group(1)
+    return None
