@@ -6,7 +6,7 @@ from rank_bm25 import BM25Okapi
 from p1 import index
 from p1.index import get_collection, reindex_file
 from p2 import search
-from p2.search import bm25_search, tokenize, vector_search
+from p2.search import bm25_search, rrf_merge, tokenize, vector_search
 
 # --- helpers ---
 
@@ -154,3 +154,33 @@ def test_bm25_does_not_reuse_the_cache_of_another_index(temp_index, tmp_path, mo
     monkeypatch.setattr(index, "CHROMA_DIR", str(tmp_path / "other_chroma"))
     monkeypatch.setattr(index, "_collection", None)
     assert bm25_search("divide") == []
+
+
+# --- rrf_merge ---
+
+
+def test_rrf_gives_one_over_k_plus_rank_for_each_list():
+    assert rrf_merge(["x"], ["x"])["x"] == pytest.approx(2 / 61)
+
+
+def test_rrf_agreement_wins():
+    scores = rrf_merge(["a", "b", "c"], ["b", "a", "c"])
+    assert scores["a"] == pytest.approx(scores["b"])
+    assert scores["a"] > scores["c"]
+
+
+def test_rrf_second_in_one_list_and_first_in_the_other_beats_first_and_last():
+    scores = rrf_merge(["x", "y", "z"], ["y", "z", "x"])
+    assert max(scores, key=scores.get) == "y"
+
+
+def test_rrf_an_id_missing_from_one_list_gets_points_from_the_other_only():
+    assert rrf_merge(["a", "b"], ["a"])["b"] == pytest.approx(1 / 62)
+
+
+def test_rrf_k_can_be_changed():
+    assert rrf_merge(["a"], [], k=0)["a"] == pytest.approx(1.0)
+
+
+def test_rrf_of_nothing_is_nothing():
+    assert rrf_merge([], []) == {}
