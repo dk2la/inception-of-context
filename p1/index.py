@@ -2,8 +2,13 @@
 import argparse
 import hashlib
 import os
+import threading
+import time
 
 import chromadb
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 
 from p1.chunker import chunk_file, is_skipped, read_text
 
@@ -11,16 +16,19 @@ TARGET_DIR = os.environ.get("TARGET_DIR", "/workspace")
 CHROMA_DIR = os.environ.get("CHROMA_DIR", "/data/chroma")
 
 _collection = None
+_collection_lock = threading.Lock()  # the startup thread and the first request may both open the Index
 INDEX_VERSION = 0  # goes up every time the Index changes, so the keyword search knows to rebuild
+EVENTS = []  # what the Watcher did, oldest first; the API streams it to the dashboard
 
 
 def get_collection():
     """The one Chroma collection of this process. The Chroma client is created on first use."""
     global _collection
-    if _collection is None:
-        client = chromadb.PersistentClient(path=CHROMA_DIR)
-        _collection = client.get_or_create_collection("chunks", metadata={"hnsw:space": "cosine"})
-    return _collection
+    with _collection_lock:
+        if _collection is None:
+            client = chromadb.PersistentClient(path=CHROMA_DIR)
+            _collection = client.get_or_create_collection("chunks", metadata={"hnsw:space": "cosine"})
+        return _collection
 
 
 def chunk_id(path, text):
@@ -73,6 +81,13 @@ def reindex_file(full_path):
     return len(new)
 
 
+def add_event(type, path, chunks):
+    """Write down what the Watcher did: type is "indexed" or "deleted"."""
+    if type not in ("indexed", "deleted"):
+        raise ValueError(f"unknown event type: {type}")
+    EVENTS.append({"time": time.time(), "type": type, "path": path, "chunks": chunks})
+
+
 def list_files(root):
     """Sorted absolute paths of every file under root that we should index."""
     found = []
@@ -100,16 +115,63 @@ def index_all(root=None):
     return get_collection().count()
 
 
+class Handler(FileSystemEventHandler):
+    """The Observer calls this for every change inside the Target Project."""
+
+    def on_any_event(self, event):
+        # Reading a file makes Linux report "opened" events too; reacting to them would loop forever.
+        if event.is_directory or event.event_type not in ("created", "modified", "deleted", "moved"):
+            return
+        paths = [event.src_path]
+        if event.event_type == "moved":  # a move is a delete of the old path plus a create of the new one
+            paths.append(event.dest_path)
+        for path in paths:
+            rel_path = os.path.relpath(path, TARGET_DIR).replace(os.sep, "/")
+            if is_skipped(rel_path):
+                continue
+            try:  # one broken file must never stop the Watcher
+                chunks = reindex_file(path)
+                add_event("indexed" if os.path.exists(path) else "deleted", rel_path, chunks)
+            except Exception as error:
+                print(f"watcher: could not handle {rel_path}: {error}")
+
+
+def watch(root=None):
+    """Start reindexing files as they change, in a background thread. Return the observer (stop it with .stop())."""
+    root = root or TARGET_DIR
+    # Docker bind mounts on macOS and Windows often drop file notifications, so WATCH_POLLING=1 checks the files instead.
+    polling = os.environ.get("WATCH_POLLING") == "1"
+    observer = PollingObserver() if polling else Observer()
+    print(f"watching {root} ({'polling' if polling else 'notifications'})")
+    observer.schedule(Handler(), root, recursive=True)
+    observer.start()
+    return observer
+
+
 def main():
-    """Console command: python -m p1.index [dir]"""
+    """Console command: python -m p1.index [dir] [--watch]"""
     global TARGET_DIR
     parser = argparse.ArgumentParser(description="Index the Target Project once.")
     parser.add_argument("dir", nargs="?", help="the folder to index (default: TARGET_DIR)")
+    parser.add_argument("--watch", action="store_true", help="keep running and reindex files as they change")
     args = parser.parse_args()
     if args.dir:
-        TARGET_DIR = os.path.abspath(args.dir)
+        TARGET_DIR = os.path.realpath(args.dir)
     chunks = index_all(TARGET_DIR)
     print(f"indexed {chunks} chunks from {len(list_files(TARGET_DIR))} files")
+    if args.watch:
+        observer = watch(TARGET_DIR)
+        printed = 0  # how many events were shown already
+        try:
+            while True:
+                while printed < len(EVENTS):
+                    event = EVENTS[printed]
+                    print(f'{event["type"]} {event["path"]} ({event["chunks"]} chunks)')
+                    printed += 1
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            observer.stop()
+        observer.join()
 
 
 if __name__ == "__main__":
