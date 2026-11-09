@@ -67,3 +67,15 @@ def take_snapshot(paths):
         else:
             snapshot[rel_path] = None
     return snapshot
+
+
+def restore_snapshot(snapshot):
+    """Rollback: put every file back as the Snapshot saw it, and delete the files that did not exist."""
+    for rel_path, data in snapshot.items():
+        path = full_path(rel_path)
+        if data is not None:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(data)
+        elif os.path.exists(path):
+            os.remove(path)

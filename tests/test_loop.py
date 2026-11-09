@@ -1,3 +1,4 @@
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -154,3 +155,67 @@ def test_take_snapshot_keeps_windows_line_endings(target):
 
 def test_take_snapshot_of_no_paths_is_empty(target):
     assert loop.take_snapshot([]) == {}
+
+
+# --- restore_snapshot (Rollback) ---
+
+
+def read_tree(root):
+    """Every file under root as {relative path: bytes}, to compare whole folders byte for byte."""
+    return {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+
+
+def test_restore_snapshot_puts_back_a_modified_file(target):
+    (target / "a.py").write_bytes(b"x = 1\n")
+    snapshot = loop.take_snapshot(["a.py"])
+    (target / "a.py").write_bytes(b"x = 2\n")
+    loop.restore_snapshot(snapshot)
+    assert (target / "a.py").read_bytes() == b"x = 1\n"
+
+
+def test_restore_snapshot_deletes_a_file_the_patch_created(target):
+    snapshot = loop.take_snapshot(["new.py"])
+    (target / "new.py").write_bytes(b"x = 1\n")
+    loop.restore_snapshot(snapshot)
+    assert not (target / "new.py").exists()
+
+
+def test_restore_snapshot_puts_back_a_deleted_file_and_its_folder(target):
+    (target / "pkg").mkdir()
+    (target / "pkg" / "b.py").write_bytes(b"y = 2\n")
+    snapshot = loop.take_snapshot(["pkg/b.py"])
+    (target / "pkg" / "b.py").unlink()
+    (target / "pkg").rmdir()
+    loop.restore_snapshot(snapshot)
+    assert (target / "pkg" / "b.py").read_bytes() == b"y = 2\n"
+
+
+def test_restore_snapshot_restores_bytes_exactly(target):
+    original = "café = 1\r\nprint(café)\r\n".encode("utf-8")
+    (target / "a.py").write_bytes(original)
+    snapshot = loop.take_snapshot(["a.py"])
+    (target / "a.py").write_bytes(b"x = 2\n")
+    loop.restore_snapshot(snapshot)
+    assert (target / "a.py").read_bytes() == original
+
+
+def test_restore_snapshot_twice_is_safe(target):
+    (target / "a.py").write_bytes(b"x = 1\n")
+    snapshot = loop.take_snapshot(["a.py", "new.py"])
+    (target / "a.py").write_bytes(b"x = 2\n")
+    (target / "new.py").write_bytes(b"y = 1\n")
+    loop.restore_snapshot(snapshot)
+    loop.restore_snapshot(snapshot)
+    assert (target / "a.py").read_bytes() == b"x = 1\n"
+    assert not (target / "new.py").exists()
+
+
+def test_restore_snapshot_leaves_the_whole_target_project_byte_for_byte_as_it_was(target, real_target):
+    shutil.copytree(real_target, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+    before = read_tree(target)
+    snapshot = loop.take_snapshot(["calculator/core.py", "calculator/cli.py", "calculator/power.py"])
+    (target / "calculator" / "core.py").write_text("changed\n")
+    (target / "calculator" / "cli.py").unlink()
+    (target / "calculator" / "power.py").write_text("def power(a, b): return a ** b\n")
+    loop.restore_snapshot(snapshot)
+    assert read_tree(target) == before
