@@ -212,3 +212,16 @@ def run_attempt(intent, k, previous, number):
         attempt["error"] = "could not apply the patch: " + str(e)
     restore_snapshot(snapshot)  # whatever failed, the next Attempt starts from the original code
     return attempt
+
+
+def run_patch_loop(intent, k=5, max_attempts=3):
+    """Try up to max_attempts (1 to 3) Attempts, telling the model why the last one failed."""
+    attempts = []
+    previous = None
+    for number in range(1, max(1, min(3, max_attempts)) + 1):
+        attempt = run_attempt(intent, k, previous, number)
+        attempts.append(attempt)
+        if attempt["ok"]:
+            return {"status": "success", "attempts": attempts, "patch": attempt["patch"]}
+        previous = {"patch": attempt["patch"], "error": attempt["error"]}
+    return {"status": "failed", "attempts": attempts, "patch": None}
