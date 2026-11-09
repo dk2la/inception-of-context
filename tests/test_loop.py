@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -36,3 +37,68 @@ def test_load_validation_command_rejects_a_config_without_a_validate_string(targ
 def test_load_validation_command_without_a_config_file_raises_file_not_found(target):
     with pytest.raises(FileNotFoundError):
         loop.load_validation_command()
+
+
+# --- run_validation ---
+
+COMPILE_THEN_PRINT = "validate: python -m py_compile {files} && python -c \"print('tests ran')\"\n"
+
+
+def test_run_validation_passes_when_the_command_succeeds(target):
+    (target / "ioc.config.yml").write_text(COMPILE_THEN_PRINT)
+    (target / "good.py").write_text("x = 1\n")
+    ok, log = loop.run_validation(["good.py"])
+    assert ok is True
+    assert "tests ran" in log
+
+
+def test_run_validation_runs_python_with_the_interpreter_that_runs_the_server(target, monkeypatch):
+    monkeypatch.setenv("PATH", str(target))  # a PATH with no python in it
+    (target / "ioc.config.yml").write_text("validate: python -c \"import sys; print(sys.prefix)\"\n")
+    ok, log = loop.run_validation([])
+    assert ok is True
+    assert log.strip() == sys.prefix
+
+
+def test_run_validation_fails_on_a_syntax_error_and_does_not_run_the_tests(target):
+    (target / "ioc.config.yml").write_text(COMPILE_THEN_PRINT)
+    (target / "bad.py").write_text("def broken(:\n")
+    ok, log = loop.run_validation(["bad.py"])
+    assert ok is False
+    assert "SyntaxError" in log
+    assert "tests ran" not in log
+
+
+def test_run_validation_with_no_python_files_still_runs_the_tests(target):
+    (target / "ioc.config.yml").write_text(COMPILE_THEN_PRINT)
+    ok, log = loop.run_validation(["README.md"])
+    assert ok is True
+    assert "tests ran" in log
+    assert "usage" not in log.lower()
+
+
+def test_run_validation_ignores_a_deleted_python_file(target):
+    (target / "ioc.config.yml").write_text(COMPILE_THEN_PRINT)
+    ok, log = loop.run_validation(["deleted.py"])
+    assert ok is True
+
+
+def test_run_validation_fails_when_the_command_exits_with_an_error_code(target):
+    (target / "ioc.config.yml").write_text("validate: exit 3\n")
+    ok, log = loop.run_validation([])
+    assert ok is False
+
+
+def test_run_validation_quotes_file_names_with_spaces(target):
+    (target / "ioc.config.yml").write_text(COMPILE_THEN_PRINT)
+    (target / "my file.py").write_text("x = 1\n")
+    ok, log = loop.run_validation(["my file.py"])
+    assert ok is True
+
+
+def test_run_validation_runs_in_the_target_project_and_captures_errors_too(target):
+    (target / "ioc.config.yml").write_text("validate: pwd && echo oops >&2 && exit 1\n")
+    ok, log = loop.run_validation([])
+    assert ok is False
+    assert str(target.resolve()) in log
+    assert "oops" in log
