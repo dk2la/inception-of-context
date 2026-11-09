@@ -6,6 +6,7 @@ import urllib.error
 import urllib.request
 
 from p1 import index
+from p2 import search
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
 ANSWER_MODEL = "qwen2.5:3b"
@@ -136,3 +137,13 @@ def route_question(question):
             if match:
                 return kind, match.group(1)
     return None
+
+
+def ask(question, k=5):
+    """Answer one Question (no history). Return {"answer", "sources", "used_llm"}."""
+    chunks = search.search(question, k)
+    if not chunks:  # nothing to ground an answer on, and a model without context invents things
+        return {"answer": "The Index is empty, so I cannot answer yet.", "sources": [], "used_llm": False}
+    prompt = build_answer_prompt(question, chunks, known_symbols(chunks))
+    answer = call_llm(ANSWER_MODEL, prompt)
+    return {"answer": answer.strip(), "sources": chunks, "used_llm": True}
