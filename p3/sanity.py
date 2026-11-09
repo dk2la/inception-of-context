@@ -41,8 +41,27 @@ def creates_existing(patch, target_dir):
     return None
 
 
+def old_content(entry, target_dir):
+    """The current text of the entry's file, or "" if there is no such file."""
+    path = os.path.join(target_dir, entry["path"])
+    if not os.path.isfile(path):
+        return ""
+    with open(path, encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def empties_file(patch, target_dir):
+    """Refuse to modify a non-empty file into "", "None" or "null" (a JSON null counts as nothing too)."""
+    for entry in patch["files"]:
+        if entry.get("op") != "modify" or not old_content(entry, target_dir).strip():
+            continue
+        if (entry.get("content") or "").strip() in ("", "None", "null"):
+            return f"patch would empty {entry['path']}"
+    return None
+
+
 # outside_target must stay first: the rules after it read files from disk and trust the paths are inside.
-RULES = [outside_target, touches_config, too_many_files, creates_existing]
+RULES = [outside_target, touches_config, too_many_files, creates_existing, empties_file]
 
 
 def check_patch(patch, target_dir):
