@@ -6,12 +6,13 @@ import threading
 import time
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from p1 import index
 from p2 import ask, search
 
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 WATCHER = {}  # holds the running observer, so the shutdown code can stop it
 
 
@@ -36,6 +37,8 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan)
+
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 
 @app.get("/status")
@@ -144,3 +147,8 @@ def ask_route(req: AskRequest):
 def model_unreachable(request, error):
     """Any route that needs the model answers 503 with a readable message, not a generic 500."""
     return JSONResponse(status_code=503, content={"detail": str(error)})
+
+
+@app.get("/")
+def dashboard():
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
