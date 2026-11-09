@@ -16,9 +16,10 @@ def load_validation_command():
     """The Validation Command from the Target Project's ioc.config.yml."""
     with open(os.path.join(index.TARGET_DIR, "ioc.config.yml"), encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    if not isinstance(config, dict) or not isinstance(config.get("validate"), str) or not config["validate"]:
+    command = config.get("validate") if isinstance(config, dict) else None
+    if not isinstance(command, str) or not command:
         raise ValueError("ioc.config.yml must contain a 'validate' command")
-    return config["validate"]
+    return command
 
 
 def full_path(rel_path):
@@ -54,3 +55,15 @@ def run_validation(changed_files):
         proc.communicate()
         return False, f"validation timed out after {VALIDATION_TIMEOUT} seconds"
     return proc.returncode == 0, log
+
+
+def take_snapshot(paths):
+    """Remember the exact bytes of each file before a Patch touches it (None if the file does not exist)."""
+    snapshot = {}
+    for rel_path in paths:
+        if os.path.isfile(full_path(rel_path)):
+            with open(full_path(rel_path), "rb") as f:
+                snapshot[rel_path] = f.read()
+        else:
+            snapshot[rel_path] = None
+    return snapshot
