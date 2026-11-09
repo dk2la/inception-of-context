@@ -15,8 +15,16 @@ def outside_target(patch, target_dir):
     return None
 
 
+def touches_config(patch, target_dir):
+    """Refuse any change to ioc.config.yml, so the model cannot weaken the Validation Command."""
+    for entry in patch["files"]:
+        if os.path.normpath(entry["path"].replace("\\", "/")) == "ioc.config.yml":
+            return "the Patch may not change ioc.config.yml (it holds the Validation Command)"
+    return None
+
+
 # outside_target must stay first: the rules after it read files from disk and trust the paths are inside.
-RULES = [outside_target]
+RULES = [outside_target, touches_config]
 
 
 def check_patch(patch, target_dir):
