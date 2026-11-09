@@ -541,3 +541,65 @@ def test_run_attempt_does_not_swallow_an_unreachable_model(client, target, fake_
     with pytest.raises(ask.LLMError):
         loop.run_attempt("add a power method", 3, None, 1)
     assert read_tree(target) == before
+
+
+# --- run_patch_loop ---
+
+
+def test_run_patch_loop_succeeds_on_the_first_attempt(client, target, fake_llm):
+    fake_llm.replies = [power_reply(target)]
+    result = loop.run_patch_loop("add a power method")
+    assert result["status"] == "success"
+    assert len(result["attempts"]) == 1
+    assert result["patch"]["files"][0]["path"] == "calculator/core.py"
+    assert len(fake_llm.prompts) == 1
+
+
+def test_run_patch_loop_tells_the_model_why_the_first_attempt_failed(client, target, fake_llm):
+    fake_llm.replies = [broken_reply(target), power_reply(target)]
+    result = loop.run_patch_loop("add a power method")
+    assert result["status"] == "success"
+    assert [a["ok"] for a in result["attempts"]] == [False, True]
+    second_prompt = fake_llm.prompts[1][1]
+    assert "YOUR PREVIOUS ATTEMPT FAILED" in second_prompt
+    assert "FAILED tests/test_core.py" in second_prompt  # the end of the pytest log
+    assert "a - b" in second_prompt  # the previous Patch is shown too
+
+
+def test_run_patch_loop_leaves_the_target_project_untouched_after_three_failures(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.replies = [broken_reply(target)] * 3
+    result = loop.run_patch_loop("add a power method")
+    assert result["status"] == "failed"
+    assert len(result["attempts"]) == 3
+    assert result["patch"] is None
+    assert read_tree(target) == before
+
+
+def test_run_patch_loop_survives_three_different_kinds_of_failure(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.replies = [
+        "not json",
+        json.dumps(make_patch(("ioc.config.yml", "modify", "validate: echo ok\n"))),
+        json.dumps(make_patch(("calculator/stub.py", "create", "def power(a, b):\n    pass\n"))),
+    ]
+    result = loop.run_patch_loop("add a power method")
+    assert result["status"] == "failed"
+    errors = [a["error"] for a in result["attempts"]]
+    assert "valid JSON" in errors[0]
+    assert "ioc.config.yml" in errors[1]
+    assert "stub function power" in errors[2]
+    assert read_tree(target) == before
+
+
+def test_run_patch_loop_never_runs_more_than_three_attempts(client, target, fake_llm):
+    fake_llm.replies = ["not json"] * 4
+    result = loop.run_patch_loop("add a power method", max_attempts=10)
+    assert len(result["attempts"]) == 3
+    assert len(fake_llm.replies) == 1  # the fourth reply was never asked for
+
+
+def test_run_patch_loop_runs_at_least_one_attempt(client, target, fake_llm):
+    fake_llm.replies = ["not json"]
+    result = loop.run_patch_loop("add a power method", max_attempts=0)
+    assert len(result["attempts"]) == 1
