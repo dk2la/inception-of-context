@@ -152,3 +152,7 @@ def test_chunks_offset_past_the_end_is_an_empty_page(client):
 def test_chunks_rejects_silly_values(client):
     for params in [{"limit": 0}, {"offset": -1}, {"limit": 201}, {"limit": "many"}]:
         assert client.get("/chunks", params=params).status_code == 422, params
+
+
+def test_a_path_with_a_nul_byte_is_a_404_not_a_500(client):
+    assert client.get("/file", params={"path": "calculator/core.py\x00.txt"}).status_code == 404

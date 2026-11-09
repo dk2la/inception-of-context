@@ -2,10 +2,12 @@
 import json
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import threading
 
 import yaml
 
@@ -106,6 +108,8 @@ def apply_patch(patch):
                 paths.append(path)
                 with open(path + ".ioc.tmp", "w", encoding="utf-8") as f:
                     f.write(entry["content"])
+                if os.path.exists(path):
+                    shutil.copymode(path, path + ".ioc.tmp")  # os.replace must not change the file's mode
         for path in paths:
             os.replace(path + ".ioc.tmp", path)
     except Exception:
@@ -208,20 +212,28 @@ def run_attempt(intent, k, previous, number):
             return attempt  # the Watcher reindexes the changed files
         attempt["error"] = "validation failed:\n" + last_lines(log)
     except Exception as e:
-        attempt["apply"] = {"ok": False, "error": str(e)}
-        attempt["error"] = "could not apply the patch: " + str(e)
+        if attempt["apply"] is None:
+            attempt["apply"] = {"ok": False, "error": str(e)}
+            attempt["error"] = "could not apply the patch: " + str(e)
+        else:  # applying worked, but the Validation Command could not run
+            attempt["validation"] = {"ok": False, "log": str(e)}
+            attempt["error"] = "validation failed:\n" + str(e)
     restore_snapshot(snapshot)  # whatever failed, the next Attempt starts from the original code
     return attempt
 
 
+PATCH_LOCK = threading.Lock()  # a second Patch Loop would snapshot the files the first one is changing
+
+
 def run_patch_loop(intent, k=5, max_attempts=3):
     """Try up to max_attempts (1 to 3) Attempts, telling the model why the last one failed."""
-    attempts = []
-    previous = None
-    for number in range(1, max(1, min(3, max_attempts)) + 1):
-        attempt = run_attempt(intent, k, previous, number)
-        attempts.append(attempt)
-        if attempt["ok"]:
-            return {"status": "success", "attempts": attempts, "patch": attempt["patch"]}
-        previous = {"patch": attempt["patch"], "error": attempt["error"]}
-    return {"status": "failed", "attempts": attempts, "patch": None}
+    with PATCH_LOCK:  # one Patch Loop at a time; another request waits here
+        attempts = []
+        previous = None
+        for number in range(1, max(1, min(3, max_attempts)) + 1):
+            attempt = run_attempt(intent, k, previous, number)
+            attempts.append(attempt)
+            if attempt["ok"]:
+                return {"status": "success", "attempts": attempts, "patch": attempt["patch"]}
+            previous = {"patch": attempt["patch"], "error": attempt["error"]}
+        return {"status": "failed", "attempts": attempts, "patch": None}
