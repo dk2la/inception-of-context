@@ -219,3 +219,64 @@ def test_restore_snapshot_leaves_the_whole_target_project_byte_for_byte_as_it_wa
     (target / "calculator" / "power.py").write_text("def power(a, b): return a ** b\n")
     loop.restore_snapshot(snapshot)
     assert read_tree(target) == before
+
+
+# --- apply_patch ---
+
+
+def make_patch(*files):
+    """A Patch from (path, op, content) tuples."""
+    return {"summary": "test", "files": [{"path": p, "op": op, "content": c} for p, op, c in files]}
+
+
+def test_apply_patch_modifies_a_file(target):
+    (target / "a.py").write_text("x = 1\n")
+    loop.apply_patch(make_patch(("a.py", "modify", "x = 2\n")))
+    assert (target / "a.py").read_text() == "x = 2\n"
+
+
+def test_apply_patch_creates_a_file_in_a_new_folder(target):
+    loop.apply_patch(make_patch(("pkg/new.py", "create", "y = 1\n")))
+    assert (target / "pkg" / "new.py").read_text() == "y = 1\n"
+
+
+def test_apply_patch_deletes_a_file(target):
+    (target / "old.md").write_text("notes\n")
+    loop.apply_patch(make_patch(("old.md", "delete", "")))
+    assert not (target / "old.md").exists()
+
+
+def test_apply_patch_leaves_no_temporary_files(target):
+    (target / "a.py").write_text("x = 1\n")
+    loop.apply_patch(make_patch(("a.py", "modify", "x = 2\n"), ("pkg/new.py", "create", "y = 1\n")))
+    assert list(target.glob("**/*.ioc.tmp")) == []
+
+
+def test_apply_patch_returns_the_touched_paths_in_patch_order(target):
+    (target / "a.py").write_text("x = 1\n")
+    (target / "old.md").write_text("notes\n")
+    patch = make_patch(("pkg/new.py", "create", "y = 1\n"), ("old.md", "delete", ""), ("a.py", "modify", "x = 2\n"))
+    assert loop.apply_patch(patch) == ["pkg/new.py", "old.md", "a.py"]
+
+
+def test_apply_patch_that_fails_while_preparing_leaves_the_real_files_untouched(target):
+    (target / "a.py").write_text("x = 1\n")
+    patch = make_patch(("a.py", "modify", "x = 2\n"), ("a.py/inner.py", "create", "y = 1\n"))  # a.py is a file
+    with pytest.raises(OSError):
+        loop.apply_patch(patch)
+    assert (target / "a.py").read_text() == "x = 1\n"
+    assert list(target.glob("**/*.ioc.tmp")) == []
+
+
+def test_apply_patch_then_rollback_leaves_the_whole_target_project_byte_for_byte_as_it_was(target, real_target):
+    shutil.copytree(real_target, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+    before = read_tree(target)
+    patch = make_patch(
+        ("calculator/core.py", "modify", "changed\n"),
+        ("calculator/cli.py", "delete", ""),
+        ("calculator/power.py", "create", "def power(a, b): return a ** b\n"),
+    )
+    snapshot = loop.take_snapshot([f["path"] for f in patch["files"]])
+    loop.apply_patch(patch)
+    loop.restore_snapshot(snapshot)
+    assert read_tree(target) == before
