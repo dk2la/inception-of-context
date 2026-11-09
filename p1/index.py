@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import os
+import time
 
 import chromadb
 
@@ -12,6 +13,7 @@ CHROMA_DIR = os.environ.get("CHROMA_DIR", "/data/chroma")
 
 _collection = None
 INDEX_VERSION = 0  # goes up every time the Index changes, so the keyword search knows to rebuild
+EVENTS = []  # what the Watcher did, oldest first; the API streams it to the dashboard
 
 
 def get_collection():
@@ -71,6 +73,13 @@ def reindex_file(full_path):
     if to_delete or to_add or moved:
         INDEX_VERSION += 1
     return len(new)
+
+
+def add_event(type, path, chunks):
+    """Write down what the Watcher did: type is "indexed" or "deleted"."""
+    if type not in ("indexed", "deleted"):
+        raise ValueError(f"unknown event type: {type}")
+    EVENTS.append({"time": time.time(), "type": type, "path": path, "chunks": chunks})
 
 
 def list_files(root):
