@@ -5,6 +5,8 @@ A Patch looks like {"summary": ..., "files": [{"path": ..., "op": "create|modify
 """
 import os
 
+MAX_FILES = 3
+
 
 def outside_target(patch, target_dir):
     """Refuse absolute paths and paths with a '..' part (a backslash counts as a separator)."""
@@ -23,8 +25,16 @@ def touches_config(patch, target_dir):
     return None
 
 
+def too_many_files(patch, target_dir):
+    """Refuse a Patch that touches more than MAX_FILES files (create, modify and delete all count)."""
+    count = len(patch["files"])
+    if count > MAX_FILES:
+        return f"patch touches {count} files, the limit is {MAX_FILES}"
+    return None
+
+
 # outside_target must stay first: the rules after it read files from disk and trust the paths are inside.
-RULES = [outside_target, touches_config]
+RULES = [outside_target, touches_config, too_many_files]
 
 
 def check_patch(patch, target_dir):
