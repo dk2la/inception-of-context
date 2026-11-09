@@ -190,3 +190,49 @@ def test_create_of_an_existing_file_is_refused_even_spelled_with_a_dot(run):
 def test_modify_and_delete_of_an_existing_file_are_ignored_by_this_rule(project):
     write(project, "a.py", "x = 1\n")
     assert sanity.creates_existing(patch_of(modify("a.py"), delete("a.py")), project) is None
+
+
+# --- empties_file (#96) ---
+
+def test_modify_to_real_content_is_allowed(project, run):
+    write(project, "a.py", "x = 1\n")
+    assert run(patch_of(modify("a.py", "x = 2\n"))) is None
+
+
+@pytest.mark.parametrize("content", ["", "None", "null", "  None \n", "\nnull\n\n", None])
+def test_a_non_empty_file_cannot_be_modified_into_nothing(project, run, content):
+    write(project, "a.py", "x = 1\n")
+    assert "a.py" in run(patch_of(modify("a.py", content)))
+
+
+def test_a_modify_without_any_content_counts_as_nothing(project, run):
+    write(project, "a.py", "x = 1\n")
+    assert "a.py" in run(patch_of({"path": "a.py", "op": "modify"}))
+
+
+def test_content_that_only_contains_none_is_real_content(project, run):
+    write(project, "a.py", "x = 1\n")
+    assert run(patch_of(modify("a.py", "x = None\n"))) is None
+
+
+def test_an_already_empty_file_may_be_written_empty_again(project, run):
+    write(project, "empty.py", "")
+    assert run(patch_of(modify("empty.py", ""))) is None
+
+
+def test_a_file_of_only_whitespace_counts_as_empty(project, run):
+    write(project, "blank.py", "  \n\n")
+    assert run(patch_of(modify("blank.py", ""))) is None
+
+
+def test_delete_is_the_honest_way_to_remove_a_file(project, run):
+    write(project, "a.py", "x = 1\n")
+    assert run(patch_of(delete("a.py"))) is None
+
+
+def test_a_new_empty_file_may_be_created(run):
+    assert run(patch_of(create("calculator/empty.py", ""))) is None
+
+
+def test_modify_of_a_missing_file_is_not_this_rules_problem(project):
+    assert sanity.empties_file(patch_of(modify("missing.py", "")), project) is None
