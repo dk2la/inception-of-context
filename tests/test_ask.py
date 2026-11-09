@@ -1,5 +1,7 @@
 import os
 
+import pytest
+
 from p1.index import reindex_file
 from p2 import ask
 
@@ -205,3 +207,132 @@ def test_symbols_in_file_shows_both_files_that_share_a_short_name(temp_index):
     index_files(temp_index, {"a/utils.py": "def one():\n    pass\n", "b/utils.py": "def two():\n    pass\n"})
     found = ask.symbols_in_file("utils.py")
     assert [(c["path"], c["name"]) for c in found] == [("a/utils.py", "one"), ("b/utils.py", "two")]
+
+
+# --- ask: a free Question goes through the model ---
+
+
+def test_ask_returns_the_models_answer_without_surrounding_whitespace(client, fake_llm):
+    fake_llm.replies = ["  Division is in Calculator.divide.  "]
+    result = ask.ask("How does division work?")
+    assert result["answer"] == "Division is in Calculator.divide."
+    assert result["used_llm"] is True
+
+
+def test_ask_uses_the_answer_model_in_plain_text_mode(client, fake_llm):
+    fake_llm.replies = ["ok"]
+    ask.ask("How does division work?")
+    model, _, json_mode = fake_llm.prompts[0]
+    assert model == ask.ANSWER_MODEL
+    assert json_mode is False
+
+
+def test_ask_prompt_has_the_question_the_symbols_and_the_code(client, fake_llm):
+    fake_llm.replies = ["ok"]
+    ask.ask("How does division work?")
+    prompt = fake_llm.prompts[0][1]
+    assert "How does division work?" in prompt
+    assert "KNOWN SYMBOLS:" in prompt
+    assert "calculator/core.py: Calculator.divide (method)" in prompt
+    assert "def divide" in prompt
+
+
+def test_ask_sources_are_the_chunks_given_to_the_model(client, fake_llm):
+    fake_llm.replies = ["ok"]
+    result = ask.ask("How does division work?", k=2)
+    assert len(result["sources"]) == 2
+    for source in result["sources"]:
+        assert source["text"] in fake_llm.prompts[0][1]
+        assert "path" in source
+
+
+def test_ask_does_not_call_the_model_when_nothing_is_indexed(temp_index, fake_llm):
+    result = ask.ask("How does division work?")
+    assert result["used_llm"] is False
+    assert result["sources"] == []
+    assert "Index is empty" in result["answer"]
+    assert fake_llm.prompts == []
+
+
+def test_ask_lets_a_model_error_through(client, fake_llm):
+    fake_llm.error = ask.LLMError("Ollama is not reachable")
+    with pytest.raises(ask.LLMError):
+        ask.ask("How does division work?")
+
+
+# --- ask: symbol questions are answered from the Index, without the model ---
+
+
+def test_a_missing_function_is_answered_no_without_the_model(client, fake_llm):
+    fake_llm.replies = ["Yes, power exists"]  # the model must not even be asked
+    result = ask.ask("Is there a function power?")
+    assert result["answer"].startswith("No")
+    assert '"power"' in result["answer"]
+    assert result["sources"] == []
+    assert result["used_llm"] is False
+    assert fake_llm.prompts == []
+
+
+def test_an_existing_method_is_answered_yes_with_its_place(client, fake_llm):
+    result = ask.ask("Is there a function add?")
+    assert result["answer"].startswith("Yes")
+    assert "method Calculator.add in calculator/core.py, lines 4-6" in result["answer"]
+    assert [s["name"] for s in result["sources"]] == ["Calculator.add"]
+    assert result["used_llm"] is False
+    assert fake_llm.prompts == []
+
+
+def test_every_match_of_a_name_is_listed_on_its_own_line(temp_index, fake_llm):
+    index_files(temp_index, {"a.py": "def run():\n    pass\n", "b.py": "class B:\n    def run(self):\n        pass\n"})
+    result = ask.ask("Is there a function run?")
+    assert "- function run in a.py, lines 1-2" in result["answer"]
+    assert "- method B.run in b.py, lines 2-3" in result["answer"]
+    assert len(result["sources"]) == 2
+
+
+CORE_ANSWER = ("calculator/core.py defines 4 functions: "
+               "Calculator.add, Calculator.subtract, Calculator.multiply, Calculator.divide.")
+
+
+def test_the_functions_of_core_py_are_exactly_the_four_methods(client, fake_llm):
+    result = ask.ask("What functions are in core.py?")
+    assert result["answer"] == CORE_ANSWER
+    assert [s["name"] for s in result["sources"]] == CORE_METHODS
+    assert {s["path"] for s in result["sources"]} == {"calculator/core.py"}
+    assert result["used_llm"] is False
+    assert fake_llm.prompts == []
+
+
+def test_the_same_question_in_russian_gives_the_same_answer(client, fake_llm):
+    result = ask.ask("Какие функции есть в файле core.py?")
+    assert result["answer"] == CORE_ANSWER
+    assert [s["name"] for s in result["sources"]] == CORE_METHODS
+    assert result["used_llm"] is False
+    assert fake_llm.prompts == []
+
+
+def test_a_file_without_functions_is_answered_clearly(client, fake_llm):
+    result = ask.ask("What functions are in nope.py?")
+    assert result["answer"] == 'I found no functions in a file named "nope.py".'
+    assert result["sources"] == []
+    assert result["used_llm"] is False
+    assert fake_llm.prompts == []
+
+
+def test_a_file_with_one_function_says_function_not_functions(temp_index, fake_llm):
+    index_files(temp_index, {"one.py": "def only():\n    pass\n"})
+    assert ask.ask("What functions are in one.py?")["answer"] == "one.py defines 1 function: only."
+
+
+def test_two_files_with_the_same_short_name_are_both_shown(temp_index, fake_llm):
+    index_files(temp_index, {"a/utils.py": "def one():\n    pass\n", "b/utils.py": "def two():\n    pass\n"})
+    answer = ask.ask("What functions are in utils.py?")["answer"]
+    assert answer == "a/utils.py defines 1 function: one.\nb/utils.py defines 1 function: two."
+
+
+def test_a_question_that_only_looks_like_a_symbol_question_still_goes_to_the_model(client, fake_llm):
+    fake_llm.replies = ["It raises ZeroDivisionError."]
+    result = ask.ask("How does divide handle zero?")
+    assert result["answer"] == "It raises ZeroDivisionError."
+    assert result["used_llm"] is True
+    assert len(fake_llm.prompts) == 1
