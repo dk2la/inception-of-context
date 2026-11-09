@@ -1,6 +1,8 @@
 """Retrieval: rank the whole Index by meaning and by keywords, then merge the two rankings."""
 import re
 
+from rank_bm25 import BM25Okapi
+
 from p1 import index
 
 
@@ -18,3 +20,14 @@ def vector_search(query):
     ids = result["ids"][0]
     similarity = {i: 1 - d for i, d in zip(ids, result["distances"][0])}
     return ids, similarity
+
+
+def bm25_search(query):
+    """Rank every Chunk by keywords (BM25). Return the ids, best first."""
+    stored = index.get_collection().get()
+    if not stored["ids"]:
+        return []  # BM25Okapi fails on no documents
+    bm25 = BM25Okapi([tokenize(text) for text in stored["documents"]])
+    scores = bm25.get_scores(tokenize(query))
+    ranked = sorted(zip(stored["ids"], scores), key=lambda pair: pair[1], reverse=True)
+    return [chunk_id for chunk_id, _ in ranked]
