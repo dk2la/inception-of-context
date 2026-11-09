@@ -4,7 +4,7 @@ import pytest
 
 from p1 import index
 from p1.index import get_collection, reindex_file
-from p2.search import tokenize, vector_search
+from p2.search import bm25_search, tokenize, vector_search
 
 # --- helpers ---
 
@@ -70,3 +70,34 @@ def test_vector_search_on_an_empty_index_returns_nothing(temp_index):
 ])
 def test_tokenize_gives_lowercase_words_and_digits(text, tokens):
     assert tokenize(text) == tokens
+
+
+# --- bm25_search ---
+
+THREE = '''def add(a, b):
+    return a + b
+
+
+def divide_by_zero_message():
+    return "cannot divide by zero"
+
+
+def greet(name):
+    return "hello " + name
+'''
+
+
+def test_bm25_search_ranks_the_exact_name_first(temp_index):
+    reindex_file(write(temp_index, "math.py", THREE))
+    ids = bm25_search("divide by zero")
+    assert name_of(ids[0]) == "divide_by_zero_message"
+
+
+def test_bm25_search_returns_every_chunk_even_without_shared_words(temp_index):
+    reindex_file(write(temp_index, "math.py", THREE))
+    assert len(bm25_search("divide by zero")) == get_collection().count()
+    assert len(bm25_search("banana")) == get_collection().count()
+
+
+def test_bm25_search_on_an_empty_index_returns_nothing(temp_index):
+    assert bm25_search("anything") == []
