@@ -57,3 +57,21 @@ def rrf_merge(ranked_a, ranked_b, k=60):
         for rank, chunk_id in enumerate(ranked, start=1):
             scores[chunk_id] = scores.get(chunk_id, 0) + 1 / (k + rank)
     return scores
+
+
+def search(query, k):
+    """The top k Chunks for a query, best first: the Chunk fields plus id, text, similarity and score."""
+    vector_ids, similarity = vector_search(query)
+    scores = rrf_merge(vector_ids, bm25_search(query))
+    top_ids = sorted(scores, key=scores.get, reverse=True)[:max(k, 0)]
+    if not top_ids:
+        return []  # empty Index or k <= 0; Chroma refuses to get no ids
+
+    found =index.get_collection().get(ids=top_ids)  # Chroma may return them in any order
+    by_id = dict(zip(found["ids"], zip(found["documents"], found["metadatas"])))
+    results = []
+    for chunk_id in top_ids:
+        text, metadata = by_id[chunk_id]
+        results.append({**metadata, "id": chunk_id, "text": text,
+                        "similarity": similarity.get(chunk_id, 0.0), "score": scores[chunk_id]})
+    return results
