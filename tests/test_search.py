@@ -1,8 +1,10 @@
 import os
 
+import pytest
+
 from p1 import index
 from p1.index import get_collection, reindex_file
-from p2.search import vector_search
+from p2.search import tokenize, vector_search
 
 # --- helpers ---
 
@@ -53,3 +55,18 @@ def test_vector_similarity_is_between_minus_one_and_one_and_best_first(temp_inde
 
 def test_vector_search_on_an_empty_index_returns_nothing(temp_index):
     assert vector_search("anything") == ([], {})
+
+
+# --- tokenize ---
+
+
+@pytest.mark.parametrize("text, tokens", [
+    ("def divide(self, a, b):", ["def", "divide", "self", "a", "b"]),
+    ("Is there a divide_by_zero?", ["is", "there", "a", "divide", "by", "zero"]),
+    ("ioc.config.yml", ["ioc", "config", "yml"]),
+    ("x2 = 10", ["x2", "10"]),
+    ("", []),
+    ("!!! ???", []),
+])
+def test_tokenize_gives_lowercase_words_and_digits(text, tokens):
+    assert tokenize(text) == tokens
