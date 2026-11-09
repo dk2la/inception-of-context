@@ -4,6 +4,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import tempfile
 
 import yaml
 
@@ -35,25 +36,28 @@ def run_validation(changed_files):
     command = load_validation_command().replace("{files}", files_text)
     # "python" in the command must be the interpreter that runs this server, even if it is not on PATH
     path = os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", "")
-    # Popen, not run: with shell=True, run() on timeout kills only the shell, and pytest keeps running.
-    # start_new_session puts the shell and its children in one process group that we can kill together.
-    proc = subprocess.Popen(
-        command,
-        shell=True,
-        cwd=index.TARGET_DIR,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        stdin=subprocess.DEVNULL,
-        text=True,
-        env=dict(os.environ, PATH=path),
-        start_new_session=True,
-    )
-    try:
-        log, _ = proc.communicate(timeout=VALIDATION_TIMEOUT)
-    except subprocess.TimeoutExpired:
-        os.killpg(proc.pid, signal.SIGKILL)
-        proc.communicate()
-        return False, f"validation timed out after {VALIDATION_TIMEOUT} seconds"
+    # Python skips recompiling a file whose size and modification second match its old .pyc. After a Rollback
+    # that can run the patched code, so validation keeps its .pyc files in a temporary folder, not in the project.
+    with tempfile.TemporaryDirectory() as pycache:
+        # Popen, not run: with shell=True, run() on timeout kills only the shell, and pytest keeps running.
+        # start_new_session puts the shell and its children in one process group that we can kill together.
+        proc = subprocess.Popen(
+            command,
+            shell=True,
+            cwd=index.TARGET_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            env=dict(os.environ, PATH=path, PYTHONPYCACHEPREFIX=pycache),
+            start_new_session=True,
+        )
+        try:
+            log, _ = proc.communicate(timeout=VALIDATION_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate()
+            return False, f"validation timed out after {VALIDATION_TIMEOUT} seconds"
     return proc.returncode == 0, log
 
 

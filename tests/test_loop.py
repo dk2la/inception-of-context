@@ -1,3 +1,4 @@
+import os
 import shutil
 import sys
 import time
@@ -280,3 +281,39 @@ def test_apply_patch_then_rollback_leaves_the_whole_target_project_byte_for_byte
     loop.apply_patch(patch)
     loop.restore_snapshot(snapshot)
     assert read_tree(target) == before
+
+
+# --- validation after a Rollback must run the restored code, not a stale .pyc ---
+
+ADD_PLUS = "def add(a, b):\n    return a + b\n"
+ADD_MINUS = "def add(a, b):\n    return a - b\n"  # same size as ADD_PLUS
+TEST_ADD = "from calc import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n"
+
+
+def make_calc_project(target):
+    (target / "ioc.config.yml").write_text("validate: python -m py_compile {files} && python -m pytest -q\n")
+    (target / "calc.py").write_text(ADD_PLUS)
+    (target / "test_calc.py").write_text(TEST_ADD)
+
+
+def same_second(path):
+    """Give the file a fixed modification time, as if it was written in the same second as before."""
+    os.utime(path, (1_700_000_000, 1_700_000_000))
+
+
+def test_validation_after_a_rollback_runs_the_restored_code_not_a_stale_pyc(target):
+    make_calc_project(target)
+    snapshot = loop.take_snapshot(["calc.py"])
+    loop.apply_patch(make_patch(("calc.py", "modify", ADD_MINUS)))
+    same_second(target / "calc.py")
+    assert loop.run_validation(["calc.py"])[0] is False
+    loop.restore_snapshot(snapshot)
+    same_second(target / "calc.py")
+    assert loop.run_validation([])[0] is True  # no .py file to recompile: it must not run an old .pyc
+
+
+def test_validation_leaves_no_pycache_in_the_target_project(target):
+    make_calc_project(target)
+    ok, log = loop.run_validation(["calc.py"])
+    assert ok is True
+    assert list(target.glob("**/__pycache__")) == []
