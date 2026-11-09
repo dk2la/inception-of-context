@@ -270,3 +270,57 @@ def test_create_delete_empty_and_missing_old_files_are_ignored(project, hundred)
 
 def test_a_file_replaced_by_nothing_gets_the_more_specific_empty_reason(hundred, run):
     assert "empty" in run(patch_of(modify("a.py", "")))
+
+
+# --- stub_function (#98) ---
+
+@pytest.mark.parametrize("code", [
+    "def f():\n    pass\n",
+    "def f():\n    ...\n",
+    "def f():\n    return None\n",
+    "def f():\n    return\n",
+    "def f():\n    'Doc.'\n    pass\n",       # docstring plus pass
+    "def f():\n    'Doc.'\n    ...\n",
+    "def f():\n    'Doc.'\n",                  # docstring only
+    "def f():\n    pass\n    pass\n",
+    "async def f():\n    pass\n",
+    "def f():\n    def g():\n        pass\n    return g\n",  # nested
+    "def f(a):\n    if a:\n        return 1\n\n\ndef g():\n    pass\n",  # second function
+])
+def test_a_function_that_does_nothing_is_refused_and_named(run, code):
+    reason = run(patch_of(create("new.py", code)))
+    assert "new.py" in reason and "stub function" in reason
+
+
+def test_a_stub_method_is_refused_and_named(run):
+    reason = run(patch_of(create("new.py", "class C:\n    def m(self):\n        pass\n")))
+    assert " m " in reason and "new.py" in reason
+
+
+def test_a_stub_is_refused_in_a_modify_too(project, run):
+    new_core = open(os.path.join(project, "calculator/core.py")).read()
+    new_core += "\n    def power(self, a, b):\n        pass\n"
+    assert "power" in run(patch_of(modify("calculator/core.py", new_core)))
+
+
+@pytest.mark.parametrize("code", [
+    "def f(a):\n    return a * 2\n",
+    "def f():\n    return 0\n",
+    "def f():\n    'Doc.'\n    return 1\n",
+    "def f():\n    raise NotImplementedError\n",
+    "class C:\n    pass\n",                  # a class is not a function
+    "class C(Exception): ...\n",
+    "x = 1\n",
+    "def f(:\n",                              # syntax error: py_compile reports it better
+])
+def test_real_code_and_broken_syntax_are_not_stubs(run, code):
+    assert run(patch_of(create("new.py", code))) is None
+
+
+def test_only_python_files_are_parsed_and_deletes_are_ignored(run):
+    assert run(patch_of(create("notes.md", "def f(): pass"), delete("main.py"))) is None
+
+
+def test_the_real_target_project_has_no_stubs(project, run):
+    old = open(os.path.join(project, "calculator/core.py")).read()
+    assert run(patch_of(modify("calculator/core.py", old))) is None
