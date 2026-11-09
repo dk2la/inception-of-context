@@ -118,6 +118,8 @@
 
 <section class="tab" id="tab-patch" hidden>
   <h2>Patch Loop</h2>
+  <p id="patch-unavailable" class="muted" hidden>Patch Loop is not available: this server runs Part 2 only. Start <code>p3.app</code> to enable it.</p>
+  <div id="patch-form" hidden></div>
 </section>
 
 <script>
@@ -465,6 +467,20 @@ async function ask() {
   }
 }
 
+// ---------- Patch Loop ----------
+
+// POST /patch only exists when p3.app is running. The server's list of routes (GET /openapi.json) tells us,
+// so we never send a POST just to find out. Shows the form if the route exists, a "not available" note if not.
+async function checkPatchAvailable() {
+  let available = false;
+  try {
+    const spec = await api("/openapi.json");
+    available = "/patch" in spec.paths;
+  } catch (e) {} // server down or no list of routes: treat the Patch Loop as not available
+  document.getElementById("patch-unavailable").hidden = available;
+  document.getElementById("patch-form").hidden = !available;
+}
+
 // ---------- Start ----------
 
 for (const button of document.querySelectorAll("nav button")) {
@@ -472,6 +488,7 @@ for (const button of document.querySelectorAll("nav button")) {
 }
 document.getElementById("retrieve-button").onclick = retrieve;
 document.getElementById("ask-button").onclick = ask;
+checkPatchAvailable();
 document.getElementById("chunks-prev").onclick = () => {
   chunkOffset = Math.max(0, chunkOffset - chunkLimit());
   loadChunks();
