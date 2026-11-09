@@ -6,7 +6,9 @@ from p1.chunker import (
     chunk_markdown,
     chunk_python,
     chunk_yaml,
+    is_skipped,
     make_chunk,
+    read_text,
 )
 
 # --- make_chunk ---
@@ -365,3 +367,54 @@ def test_real_calculator_has_four_methods(real_target):
         chunks = chunk_file("calculator/core.py", f.read())
     methods = [c["name"] for c in chunks if c["kind"] == "method"]
     assert methods == ["Calculator.add", "Calculator.subtract", "Calculator.multiply", "Calculator.divide"]
+
+
+# --- skipped paths ---
+
+
+def test_normal_source_files_are_not_skipped():
+    for path in ["calculator/core.py", "main.py", "build.py", "docs/building.md", "ioc.config.yml"]:
+        assert not is_skipped(path), path
+
+
+def test_tool_folders_are_skipped_at_any_depth():
+    for path in ["venv/lib/site.py", "a/b/node_modules/x.js", ".git/config", "dist/x.py",
+                 "build/x.py", ".venv/bin/x", "calculator/__pycache__/core.cpython-312.pyc"]:
+        assert is_skipped(path), path
+
+
+def test_hidden_files_and_temporary_files_are_skipped():
+    assert is_skipped(".env")
+    assert is_skipped(".pytest_cache/README.md")
+    assert is_skipped("calculator/core.py.ioc.tmp")
+
+
+def test_leading_dot_slash_is_not_a_hidden_folder():
+    assert not is_skipped("./main.py")
+
+
+# --- reading text ---
+
+
+def test_read_text_returns_text_as_written(tmp_path):
+    (tmp_path / "a.py").write_text('print("hi")')
+    (tmp_path / "ru.txt").write_text("привет", encoding="utf-8")
+    assert read_text(str(tmp_path / "a.py")) == 'print("hi")'
+    assert read_text(str(tmp_path / "ru.txt")) == "привет"
+
+
+def test_read_text_empty_file_is_an_empty_string(tmp_path):
+    (tmp_path / "empty.py").write_text("")
+    assert read_text(str(tmp_path / "empty.py")) == ""
+
+
+def test_read_text_refuses_binary_files(tmp_path):
+    (tmp_path / "logo.png").write_bytes(b"\x89PNG\x00\x00data")
+    (tmp_path / "latin.txt").write_bytes(b"\xff\xfe\xfd")
+    assert read_text(str(tmp_path / "logo.png")) is None
+    assert read_text(str(tmp_path / "latin.txt")) is None
+
+
+def test_read_text_missing_file_and_directory(tmp_path):
+    assert read_text(str(tmp_path / "nope.py")) is None
+    assert read_text(str(tmp_path)) is None
