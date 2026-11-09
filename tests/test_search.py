@@ -184,3 +184,59 @@ def test_rrf_k_can_be_changed():
 
 def test_rrf_of_nothing_is_nothing():
     assert rrf_merge([], []) == {}
+
+
+# --- search ---
+
+FOUR = '''def add(a, b):
+    return a + b
+
+
+def divide(a, b):
+    return a / b
+
+
+def divide_by_zero_message():
+    return "cannot divide by zero"
+
+
+def greet(name):
+    return "hello " + name
+'''
+
+
+def test_search_returns_k_chunks_with_everything_a_caller_needs(temp_index):
+    reindex_file(write(temp_index, "math.py", FOUR))
+    results = search.search("divide", 2)
+    assert len(results) == 2
+    for result in results:
+        assert {"id", "path", "start_line", "end_line", "name", "kind", "hash",
+                "text", "similarity", "score"} <= set(result)
+    assert results[0]["path"] == "math.py"
+    assert results[0]["text"] in FOUR
+
+
+def test_search_results_are_sorted_by_score_best_first(temp_index):
+    reindex_file(write(temp_index, "math.py", FOUR))
+    scores = [r["score"] for r in search.search("divide", 4)]
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_search_puts_the_exact_name_first(temp_index):
+    reindex_file(write(temp_index, "math.py", FOUR))
+    assert search.search("divide by zero", 3)[0]["name"] == "divide_by_zero_message"
+
+
+def test_search_with_k_larger_than_the_index_returns_every_chunk(temp_index):
+    reindex_file(write(temp_index, "math.py", FOUR))
+    assert len(search.search("x", 100)) == get_collection().count()
+
+
+def test_search_on_an_empty_index_returns_nothing(temp_index):
+    assert search.search("x", 5) == []
+
+
+@pytest.mark.parametrize("k", [0, -1])
+def test_search_with_k_zero_or_negative_returns_nothing(temp_index, k):
+    reindex_file(write(temp_index, "math.py", FOUR))
+    assert search.search("divide", k) == []
