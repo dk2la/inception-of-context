@@ -201,3 +201,40 @@ def test_replacing_a_file_through_an_ioc_tmp_file_reindexes_the_real_file_only(t
     finally:
         observer.stop()
         observer.join()
+
+
+# --- WATCH_POLLING ---
+
+
+def test_watch_polling_uses_the_polling_observer_and_still_indexes_files(temp_index, monkeypatch, capsys):
+    """Slower test: polling looks at the folder about once a second."""
+    from watchdog.observers.polling import PollingObserver
+
+    monkeypatch.setattr(index, "EVENTS", [])
+    monkeypatch.setenv("WATCH_POLLING", "1")
+    observer = index.watch(temp_index)
+    try:
+        assert isinstance(observer, PollingObserver)
+        assert "(polling)" in capsys.readouterr().out
+        write(temp_index, "a.py", "def a():\n    return 1\n")
+        assert wait_until(lambda: happened("indexed", "a.py"), seconds=10)
+        assert len(chunks_of("a.py")) > 0
+    finally:
+        observer.stop()
+        observer.join()
+
+
+@pytest.mark.parametrize("value", [None, "0", "yes"])
+def test_without_watch_polling_one_the_normal_observer_is_used(temp_index, monkeypatch, capsys, value):
+    from watchdog.observers.polling import PollingObserver
+
+    monkeypatch.delenv("WATCH_POLLING", raising=False)
+    if value:
+        monkeypatch.setenv("WATCH_POLLING", value)
+    observer = index.watch(temp_index)
+    try:
+        assert not isinstance(observer, PollingObserver)
+        assert "(notifications)" in capsys.readouterr().out
+    finally:
+        observer.stop()
+        observer.join()
