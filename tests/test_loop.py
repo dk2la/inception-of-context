@@ -1,4 +1,5 @@
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -102,3 +103,27 @@ def test_run_validation_runs_in_the_target_project_and_captures_errors_too(targe
     assert ok is False
     assert str(target.resolve()) in log
     assert "oops" in log
+
+
+def test_run_validation_stops_a_command_that_takes_too_long(target, monkeypatch):
+    monkeypatch.setattr(loop, "VALIDATION_TIMEOUT", 1)
+    (target / "ioc.config.yml").write_text("validate: sleep 30\n")
+    start = time.time()
+    result = loop.run_validation([])
+    assert result == (False, "validation timed out after 1 seconds")
+    assert time.time() - start < 5
+
+
+def test_run_validation_timeout_kills_the_children_of_the_shell_too(target, monkeypatch):
+    monkeypatch.setattr(loop, "VALIDATION_TIMEOUT", 1)
+    # the subshell is a child of the shell: killing only the shell would let it create the file
+    (target / "ioc.config.yml").write_text("validate: (sleep 2 && touch finished.txt); echo done\n")
+    ok, log = loop.run_validation([])
+    assert ok is False
+    time.sleep(2.5)
+    assert not (target / "finished.txt").exists()
+
+
+def test_run_validation_returns_the_output_of_a_fast_command(target):
+    (target / "ioc.config.yml").write_text("validate: echo ok\n")
+    assert loop.run_validation([]) == (True, "ok\n")
