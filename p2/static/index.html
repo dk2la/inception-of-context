@@ -18,6 +18,10 @@
   pre { margin: 0; padding: 8px; overflow-x: auto; background: #f6f6f6; }
   #error { margin-bottom: 12px; padding: 8px; color: #b00020; background: #fdecea; white-space: pre-line; }
   #error:empty { display: none; }
+  #status-cards { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .card { min-width: 150px; padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; }
+  .card small { display: block; color: #666; }
+  .card strong { overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -34,6 +38,7 @@
 
 <section class="tab" id="tab-overview">
   <h2>Overview</h2>
+  <div id="status-cards"></div>
 </section>
 
 <section class="tab" id="tab-files" hidden>
@@ -67,6 +72,23 @@ async function api(path, options) {
   throw new Error(response.status + " " + (typeof detail === "string" ? detail : text));
 }
 
+// Makes an element. The text is set with textContent, so it is always shown as plain text, never as HTML.
+function el(tag, text = "", className = "") {
+  const element = document.createElement(tag);
+  element.textContent = text;
+  element.className = className;
+  return element;
+}
+
+// Each part of the page has its own error slot, so one part clearing its message never hides another's.
+const errors = {};
+
+function setError(name, message) {
+  if (message) errors[name] = message;
+  else delete errors[name];
+  document.getElementById("error").textContent = Object.values(errors).join("\n");
+}
+
 // ---------- Tabs ----------
 
 // Tab name -> function to run each time the tab is shown.
@@ -83,11 +105,40 @@ function showTab(name) {
   if (tabLoaders[name]) tabLoaders[name]();
 }
 
+// ---------- Overview ----------
+
+// Draws one card per value of GET /status.
+async function loadStatus() {
+  try {
+    const s = await api("/status");
+    const cards = [
+      ["Chunks", s.chunks],
+      ["Target Project", s.target_dir],
+      ["Index", s.chroma_dir],
+      ["Answer model", s.answer_model],
+      ["Patch model", s.patch_model],
+      ["Ollama", s.ollama_host],
+    ];
+    const container = document.getElementById("status-cards");
+    container.replaceChildren();
+    for (const [label, value] of cards) {
+      const card = el("div", "", "card");
+      card.append(el("small", label), el("strong", value ?? "-"));
+      container.append(card);
+    }
+    setError("status", "");
+  } catch (e) {
+    setError("status", "Cannot reach the server: " + e.message);
+  }
+}
+
 // ---------- Start ----------
 
 for (const button of document.querySelectorAll("nav button")) {
   button.onclick = () => showTab(button.dataset.tab);
 }
+loadStatus();
+setInterval(loadStatus, 3000);
 const firstTab = location.hash.slice(1);
 showTab(document.getElementById("tab-" + firstTab) ? firstTab : "overview");
 </script>
