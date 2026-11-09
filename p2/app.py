@@ -38,8 +38,6 @@ async def lifespan(app):
 
 app = FastAPI(lifespan=lifespan)
 
-STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-
 
 @app.get("/status")
 def status():
