@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import os
+import threading
 import time
 
 import chromadb
@@ -15,6 +16,7 @@ TARGET_DIR = os.environ.get("TARGET_DIR", "/workspace")
 CHROMA_DIR = os.environ.get("CHROMA_DIR", "/data/chroma")
 
 _collection = None
+_collection_lock = threading.Lock()  # the startup thread and the first request may both open the Index
 INDEX_VERSION = 0  # goes up every time the Index changes, so the keyword search knows to rebuild
 EVENTS = []  # what the Watcher did, oldest first; the API streams it to the dashboard
 
@@ -22,10 +24,11 @@ EVENTS = []  # what the Watcher did, oldest first; the API streams it to the das
 def get_collection():
     """The one Chroma collection of this process. The Chroma client is created on first use."""
     global _collection
-    if _collection is None:
-        client = chromadb.PersistentClient(path=CHROMA_DIR)
-        _collection = client.get_or_create_collection("chunks", metadata={"hnsw:space": "cosine"})
-    return _collection
+    with _collection_lock:
+        if _collection is None:
+            client = chromadb.PersistentClient(path=CHROMA_DIR)
+            _collection = client.get_or_create_collection("chunks", metadata={"hnsw:space": "cosine"})
+        return _collection
 
 
 def chunk_id(path, text):
