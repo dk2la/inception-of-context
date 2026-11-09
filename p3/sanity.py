@@ -3,6 +3,7 @@
 Each rule is a function (patch, target_dir) that returns a reason string, or None if the Patch is fine.
 A Patch looks like {"summary": ..., "files": [{"path": ..., "op": "create|modify|delete", "content": ...}]}.
 """
+import ast
 import os
 
 MAX_FILES = 3
@@ -74,8 +75,44 @@ def shrinks_too_much(patch, target_dir):
     return None
 
 
+def does_nothing(statement):
+    """True for `pass`, `...` and `return None` (or a bare `return`)."""
+    if isinstance(statement, ast.Pass):
+        return True
+    if isinstance(statement, ast.Expr):  # `...` is an expression statement holding the constant Ellipsis
+        return isinstance(statement.value, ast.Constant) and statement.value.value is Ellipsis
+    if isinstance(statement, ast.Return):
+        value = statement.value
+        return value is None or (isinstance(value, ast.Constant) and value.value is None)
+    return False
+
+
+def is_stub(function):
+    """True if the body of a function, its docstring aside, does nothing."""
+    body = function.body
+    if ast.get_docstring(function, clean=False) is not None:
+        body = body[1:]
+    return all(does_nothing(statement) for statement in body)
+
+
+def stub_function(patch, target_dir):
+    """Refuse a Python function whose body does nothing: it can pass the tests while the feature is missing."""
+    for entry in patch["files"]:
+        if entry.get("op") not in ("create", "modify") or not entry["path"].endswith(".py"):
+            continue
+        try:
+            tree = ast.parse(entry.get("content") or "")
+        except (SyntaxError, ValueError):
+            continue  # py_compile in the Validation Command reports broken code better
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and is_stub(node):
+                return f"stub function {node.name} in {entry['path']}"
+    return None
+
+
 # outside_target must stay first: the rules after it read files from disk and trust the paths are inside.
-RULES = [outside_target, touches_config, too_many_files, creates_existing, empties_file, shrinks_too_much]
+RULES = [outside_target, touches_config, too_many_files, creates_existing, empties_file, shrinks_too_much,
+         stub_function]
 
 
 def check_patch(patch, target_dir):
