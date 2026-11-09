@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -10,6 +11,8 @@ import pytest
 from p1 import index
 from p2 import ask
 from p3 import loop
+
+REPO_ROOT = Path(__file__).parent.parent
 
 
 @pytest.fixture
@@ -603,3 +606,57 @@ def test_run_patch_loop_runs_at_least_one_attempt(client, target, fake_llm):
     fake_llm.replies = ["not json"]
     result = loop.run_patch_loop("add a power method", max_attempts=0)
     assert len(result["attempts"]) == 1
+
+
+# --- POST /patch ---
+
+
+def test_post_patch_applies_a_good_patch(client, target, fake_llm):
+    fake_llm.replies = [power_reply(target)]
+    response = client.post("/patch", json={"intent": "add power"})
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"status", "attempts", "patch"}
+    assert body["status"] == "success"
+    assert body["patch"] is not None
+    assert body["attempts"][0]["validation"]["ok"] is True
+    assert "def power" in (target / "calculator" / "core.py").read_text()
+
+
+def test_post_patch_rolls_back_after_three_failed_attempts(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.replies = [broken_reply(target)] * 3
+    response = client.post("/patch", json={"intent": "add power"})  # max_attempts defaults to 3
+    body = response.json()
+    assert response.status_code == 200
+    assert body["status"] == "failed"
+    assert len(body["attempts"]) == 3
+    assert [a["validation"]["ok"] for a in body["attempts"]] == [False, False, False]
+    assert body["patch"] is None
+    assert read_tree(target) == before
+
+
+def test_post_patch_takes_k_and_max_attempts(client, target, fake_llm):
+    fake_llm.replies = ["not json", "not json"]
+    body = client.post("/patch", json={"intent": "add power", "k": 2, "max_attempts": 1}).json()
+    assert len(body["attempts"]) == 1
+
+
+def test_post_patch_without_an_intent_is_a_422(client):
+    assert client.post("/patch", json={}).status_code == 422
+
+
+def test_post_patch_with_ollama_down_is_a_503(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.error = ask.LLMError("Ollama is not reachable at http://ollama:11434")
+    response = client.post("/patch", json={"intent": "add power"})
+    assert response.status_code == 503
+    assert "Ollama is not reachable" in response.json()["detail"]
+    assert read_tree(target) == before
+
+
+def test_the_part_2_app_alone_has_no_patch_route():
+    code = "from p2.app import app; print([route.path for route in app.routes])"
+    result = subprocess.run([sys.executable, "-c", code], cwd=REPO_ROOT, capture_output=True, text=True)
+    assert "/status" in result.stdout
+    assert "/patch" not in result.stdout
