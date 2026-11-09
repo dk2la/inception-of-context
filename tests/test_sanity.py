@@ -157,3 +157,36 @@ def test_too_many_files_can_be_called_directly(project):
 def test_the_path_rule_runs_before_the_count(run):
     reason = run(patch_of(*files_named(3), create("../x.py")))
     assert "path outside target project" in reason
+
+
+# --- creates_existing (#95) ---
+
+def write(project, name, text):
+    """Put a file in the temporary Target Project."""
+    path = os.path.join(project, name)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(text)
+
+
+def test_create_of_a_missing_file_is_allowed(run):
+    assert run(patch_of(create("new.py"), create("sub/new.py"))) is None
+
+
+def test_create_of_an_existing_file_is_refused_and_names_it(project, run):
+    write(project, "a.py", "x = 1\n")
+    reason = run(patch_of(create("a.py")))
+    assert "a.py" in reason and "modify" in reason
+
+
+def test_create_of_an_existing_file_in_a_folder_is_refused(run):
+    assert "calculator/core.py" in run(patch_of(create("calculator/core.py")))
+
+
+def test_create_of_an_existing_file_is_refused_even_spelled_with_a_dot(run):
+    assert "main.py" in run(patch_of(create("./main.py")))
+
+
+def test_modify_and_delete_of_an_existing_file_are_ignored_by_this_rule(project):
+    write(project, "a.py", "x = 1\n")
+    assert sanity.creates_existing(patch_of(modify("a.py"), delete("a.py")), project) is None

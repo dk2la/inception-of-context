@@ -33,8 +33,16 @@ def too_many_files(patch, target_dir):
     return None
 
 
+def creates_existing(patch, target_dir):
+    """Refuse a 'create' of a file that is already there: the model has a wrong picture of the project."""
+    for entry in patch["files"]:
+        if entry.get("op") == "create" and os.path.exists(os.path.join(target_dir, entry["path"])):
+            return f"create on existing file: {entry['path']} (use modify)"
+    return None
+
+
 # outside_target must stay first: the rules after it read files from disk and trust the paths are inside.
-RULES = [outside_target, touches_config, too_many_files]
+RULES = [outside_target, touches_config, too_many_files, creates_existing]
 
 
 def check_patch(patch, target_dir):
