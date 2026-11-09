@@ -4,13 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Inception-of-Context</title>
+<link rel="icon" href="data:,"> <!-- no icon; stops the browser asking the server for /favicon.ico -->
 <style>
   body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 0 auto; padding: 16px; color: #222; }
   h1 { margin: 0 0 12px; font-size: 1.5rem; }
   [hidden] { display: none !important; }
   button { font: inherit; cursor: pointer; }
   button:disabled { cursor: default; }
-  nav { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid #ddd; }
+  nav { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid #ddd; }
   nav button { padding: 8px 14px; border: 0; border-bottom: 3px solid transparent; background: none; }
   nav button.active { border-bottom-color: #2563eb; font-weight: bold; }
   table { border-collapse: collapse; }
@@ -38,11 +39,13 @@
   #chunks-range { margin: 0 8px; }
   #chunk-table summary { cursor: pointer; font-family: monospace; white-space: pre; }
   textarea { width: 100%; box-sizing: border-box; font: inherit; }
+  input[type=number] { width: 4em; }
   .muted { color: #666; }
+  .ok { color: #1a7f37; }
   .fail { color: #b00020; }
   #answer-text { margin: 4px 0 12px; white-space: pre-wrap; }
-  .source { margin: 8px 0; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
-  .source-title { font-weight: bold; }
+  .box { margin: 8px 0; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+  .box-title { font-weight: bold; }
 </style>
 </head>
 <body>
@@ -119,7 +122,16 @@
 <section class="tab" id="tab-patch" hidden>
   <h2>Patch Loop</h2>
   <p id="patch-unavailable" class="muted" hidden>Patch Loop is not available: this server runs Part 2 only. Start <code>p3.app</code> to enable it.</p>
-  <div id="patch-form" hidden></div>
+  <div id="patch-form" hidden>
+    <textarea id="intent" rows="3" placeholder="Describe the change to make, e.g. add a power function to Calculator"></textarea>
+    <p>
+      <label>Chunks to retrieve (k) <input id="patch-k" type="number" min="1" value="5"></label>
+      <label>Max Attempts <input id="patch-attempts" type="number" min="1" max="3" value="3"></label>
+      <button id="patch-run">Run</button>
+    </p>
+    <div id="patch-message"></div>
+    <div id="patch-result"></div>
+  </div>
 </section>
 
 <script>
@@ -399,8 +411,8 @@ function renderSources(container, chunks) {
   if (chunks.length === 0) container.append(el("p", "No sources.", "muted"));
   chunks.forEach((chunk, index) => {
     const kind = chunk.kind ? ` (${chunk.kind})` : "";
-    const card = el("div", "", "source");
-    card.append(el("div", `#${index + 1}  ${chunk.path} : ${chunk.start_line}–${chunk.end_line}   ${chunk.name}${kind}`, "source-title"));
+    const card = el("div", "", "box");
+    card.append(el("div", `#${index + 1}  ${chunk.path} : ${chunk.start_line}–${chunk.end_line}   ${chunk.name}${kind}`, "box-title"));
     const scores = formatScores(chunk);
     if (scores) card.append(el("div", scores, "muted"));
     card.append(el("pre", chunk.text));
@@ -481,14 +493,84 @@ async function checkPatchAvailable() {
   document.getElementById("patch-form").hidden = !available;
 }
 
+// The four steps of an Attempt: the key in the reply and the label shown.
+const PATCH_STEPS = [["generation", "Generate"], ["sanity", "Sanity Check"], ["apply", "Apply"], ["validation", "Validate"]];
+
+// The detail text of one step. A step has at most one of: files written, summary, error, reason.
+function stepDetail(step) {
+  if (step.files) return step.files.join(", ");
+  return step.summary || step.error || step.reason || "";
+}
+
+// One line for one step: ✓, ✗ or "skipped" (the step was never reached), plus its detail.
+// The validation log can be long, so it sits in a <details> box.
+function stepLine(label, step) {
+  const line = el("div");
+  if (!step) {
+    line.append(el("span", `– ${label}: skipped`, "muted"));
+    return line;
+  }
+  const detail = stepDetail(step);
+  line.append(el("span", `${step.ok ? "✓" : "✗"} ${label}${detail ? ": " + detail : ""}`, step.ok ? "ok" : "fail"));
+  if (step.log) {
+    const log = el("details");
+    log.append(el("summary", "validation log"), el("pre", step.log));
+    line.append(log);
+  }
+  return line;
+}
+
+// A card for one Attempt: its title and one line per step.
+function attemptCard(attempt) {
+  const card = el("div", "", "box");
+  card.append(el("div", `Attempt ${attempt.number}: ${attempt.ok ? "passed" : "failed"}`, "box-title"));
+  for (const [key, label] of PATCH_STEPS) card.append(stepLine(label, attempt[key]));
+  return card;
+}
+
+// Shows the reply of POST /patch: the status, every Attempt, and the final Patch.
+function renderPatchResult(container, data) {
+  container.replaceChildren();
+  container.append(el("h3", `Status: ${data.status}`, data.status === "success" ? "ok" : "fail"));
+  for (const attempt of data.attempts) container.append(attemptCard(attempt));
+  container.append(el("h3", "Patch"));
+  if (data.patch) {
+    container.append(el("pre", JSON.stringify(data.patch, null, 2)));
+  } else {
+    container.append(el("p", "No Patch: every Attempt failed and the Target Project was rolled back."));
+  }
+}
+
+// Run button: send the Intent to POST /patch and wait. The loop can take minutes on CPU.
+async function runPatchLoop() {
+  const intent = document.getElementById("intent").value.trim();
+  if (intent === "") {
+    showMessage("patch-message", "Type an Intent first.", true);
+    return;
+  }
+  const k = Math.max(1, Number(document.getElementById("patch-k").value) || 5);
+  const maxAttempts = Math.min(3, Math.max(1, Number(document.getElementById("patch-attempts").value) || 3));
+  const button = document.getElementById("patch-run");
+  const result = document.getElementById("patch-result");
+  result.replaceChildren();
+  button.disabled = true;
+  showMessage("patch-message", "Running… this can take a few minutes on CPU.");
+  try {
+    renderPatchResult(result, await post("/patch", {intent, k, max_attempts: maxAttempts}));
+    showMessage("patch-message", "");
+  } catch (e) {
+    showMessage("patch-message", "Request failed: " + e.message, true); // a 503 says that Ollama is not reachable
+  } finally {
+    button.disabled = false;
+  }
+}
+
 // ---------- Start ----------
 
+// Connect the buttons.
 for (const button of document.querySelectorAll("nav button")) {
   button.onclick = () => showTab(button.dataset.tab);
 }
-document.getElementById("retrieve-button").onclick = retrieve;
-document.getElementById("ask-button").onclick = ask;
-checkPatchAvailable();
 document.getElementById("chunks-prev").onclick = () => {
   chunkOffset = Math.max(0, chunkOffset - chunkLimit());
   loadChunks();
@@ -501,9 +583,17 @@ document.getElementById("chunk-limit").onchange = () => {
   chunkOffset = 0;
   loadChunks();
 };
+document.getElementById("retrieve-button").onclick = retrieve;
+document.getElementById("ask-button").onclick = ask;
+document.getElementById("patch-run").onclick = runPatchLoop;
+
+// Start the parts that run by themselves.
 refreshOverview();
 setInterval(refreshOverview, 3000);
 startActivityFeed();
+checkPatchAvailable();
+
+// Open the tab named in the URL (#files), or Overview.
 const firstTab = location.hash.slice(1);
 showTab(document.getElementById("tab-" + firstTab) ? firstTab : "overview");
 </script>
