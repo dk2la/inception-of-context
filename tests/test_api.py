@@ -35,6 +35,41 @@ def test_ask_without_a_question_is_a_422(client, fake_llm):
     assert client.post("/ask", json={}).status_code == 422
 
 
+# --- symbol questions never reach the model ---
+
+
+def test_ask_says_no_to_a_function_that_does_not_exist(client, fake_llm):
+    fake_llm.replies = ["Yes, power exists"]
+    body = client.post("/ask", json={"question": "is there a function power?"}).json()
+    assert body["answer"].startswith("No")
+    assert body["sources"] == []
+    assert body["used_llm"] is False
+    assert fake_llm.prompts == []
+
+
+def test_ask_lists_exactly_the_four_methods_of_core_py(client, fake_llm):
+    body = client.post("/ask", json={"question": "What functions are in core.py?"}).json()
+    assert [s["name"] for s in body["sources"]] == [
+        "Calculator.add", "Calculator.subtract", "Calculator.multiply", "Calculator.divide"]
+    assert body["used_llm"] is False
+    assert fake_llm.prompts == []
+
+
+def test_ask_answers_the_russian_symbol_questions_the_same_way(client, fake_llm):
+    no = client.post("/ask", json={"question": "Есть ли функция power?"}).json()
+    assert no["answer"].startswith("No") and no["sources"] == []
+    four = client.post("/ask", json={"question": "Какие функции есть в файле core.py?"}).json()
+    assert len(four["sources"]) == 4
+    assert fake_llm.prompts == []
+
+
+def test_a_symbol_question_still_works_while_the_model_is_down(client, fake_llm):
+    fake_llm.error = ask.LLMError("Ollama is not reachable at http://x")
+    response = client.post("/ask", json={"question": "What functions are in core.py?"})
+    assert response.status_code == 200
+    assert response.json()["used_llm"] is False
+
+
 # --- Ollama is down ---
 
 
