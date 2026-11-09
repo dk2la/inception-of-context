@@ -1,0 +1,30 @@
+services:
+  ioc:
+    build: .
+    command: uvicorn p3.app:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      # Bind mount: the Target Project on your disk, seen live inside the container.
+      - ./target:/workspace
+      # Named volume: the Index. It lives outside the Target Project, so the Watcher never sees its writes.
+      - chroma_data:/data/chroma
+    environment:
+      TARGET_DIR: /workspace
+      CHROMA_DIR: /data/chroma
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      WATCH_POLLING: ${WATCH_POLLING:-0}
+    depends_on:
+      - ollama
+
+  # No published port: ioc reaches Ollama over the compose network at http://ollama:11434.
+  ollama:
+    image: ollama/ollama
+    volumes:
+      # Named volume: the downloaded models survive restarts.
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  chroma_data:
+  ollama_models:
