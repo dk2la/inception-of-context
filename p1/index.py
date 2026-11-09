@@ -118,14 +118,18 @@ class Handler(FileSystemEventHandler):
         # Reading a file makes Linux report "opened" events too; reacting to them would loop forever.
         if event.is_directory or event.event_type not in ("created", "modified", "deleted", "moved"):
             return
-        rel_path = os.path.relpath(event.src_path, TARGET_DIR).replace(os.sep, "/")
-        if is_skipped(rel_path):
-            return
-        try:  # one broken file must never stop the Watcher
-            chunks = reindex_file(event.src_path)
-            add_event("indexed" if os.path.exists(event.src_path) else "deleted", rel_path, chunks)
-        except Exception as error:
-            print(f"watcher: could not handle {rel_path}: {error}")
+        paths = [event.src_path]
+        if event.event_type == "moved":  # a move is a delete of the old path plus a create of the new one
+            paths.append(event.dest_path)
+        for path in paths:
+            rel_path = os.path.relpath(path, TARGET_DIR).replace(os.sep, "/")
+            if is_skipped(rel_path):
+                continue
+            try:  # one broken file must never stop the Watcher
+                chunks = reindex_file(path)
+                add_event("indexed" if os.path.exists(path) else "deleted", rel_path, chunks)
+            except Exception as error:
+                print(f"watcher: could not handle {rel_path}: {error}")
 
 
 def watch(root=None):
