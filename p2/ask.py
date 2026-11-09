@@ -47,3 +47,22 @@ def known_symbols(chunks):
             if meta["kind"] in ("function", "async_function", "class", "method"):
                 lines.add(f"{path}: {meta['name']} ({meta['kind']})")
     return sorted(lines)
+
+
+ANSWER_RULES = """You answer questions about a small Python project, using ONLY the code below.
+Rules:
+- Use only the code shown. If the answer is not in the code, say you don't know.
+- Only mention functions, classes and methods from KNOWN SYMBOLS.
+  If something the user asks about is not in KNOWN SYMBOLS, say it does not exist.
+- Mention the file path when you refer to code.
+- Answer briefly."""
+
+
+def build_answer_prompt(question, chunks, symbols):
+    """The text sent to the model: rules, KNOWN SYMBOLS, the retrieved code, then the Question."""
+    code = "\n\n".join(
+        f"--- {c['path']} lines {c['start_line']}-{c['end_line']} ({c['name']}) ---\n{c['text']}" for c in chunks
+    )
+    symbols_text = "\n".join(symbols) or "(none)"
+    return (f"{ANSWER_RULES}\n\nKNOWN SYMBOLS:\n{symbols_text}\n\nCODE:\n{code}\n\n"
+            f"QUESTION:\n{question}\n\nANSWER:")
