@@ -97,3 +97,32 @@ def test_one_bad_path_among_good_ones_is_enough(run):
 
 def test_a_path_that_only_contains_dots_in_a_name_is_allowed(run):
     assert run(patch_of(create("calculator/v1..2.py"), create("...py"))) is None
+
+
+# --- touches_config (#93) ---
+
+@pytest.mark.parametrize("entry", [
+    modify("ioc.config.yml", "validate: 'true'\n"),
+    delete("ioc.config.yml"),
+    create("./ioc.config.yml"),
+    modify("calculator/../ioc.config.yml"),
+    modify(".\\ioc.config.yml"),
+])
+def test_the_config_file_is_never_touched_in_any_spelling(project, entry):
+    # Called directly, because 'calculator/../' would be refused earlier by outside_target.
+    reason = sanity.touches_config(patch_of(entry), project)
+    assert "ioc.config.yml" in reason and "Validation Command" in reason
+
+
+def test_a_patch_touching_the_config_among_other_files_is_refused(run):
+    reason = run(patch_of(modify("calculator/core.py", "x = 1\n" * 100), modify("ioc.config.yml")))
+    assert "ioc.config.yml" in reason
+
+
+def test_the_config_is_refused_by_the_runner(run):
+    assert "Validation Command" in run(patch_of(modify("./ioc.config.yml")))
+    assert "ioc.config.yml" in run(patch_of(modify("calculator/../ioc.config.yml")))
+
+
+def test_files_with_similar_names_are_allowed(run):
+    assert run(patch_of(create("docs/ioc.config.yml.md"), create("sub/ioc.config.yml"))) is None
