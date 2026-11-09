@@ -127,3 +127,30 @@ def test_run_validation_timeout_kills_the_children_of_the_shell_too(target, monk
 def test_run_validation_returns_the_output_of_a_fast_command(target):
     (target / "ioc.config.yml").write_text("validate: echo ok\n")
     assert loop.run_validation([]) == (True, "ok\n")
+
+
+# --- take_snapshot ---
+
+
+def test_take_snapshot_stores_the_bytes_of_a_file(target):
+    (target / "a.py").write_bytes(b"x = 1\n")
+    assert loop.take_snapshot(["a.py"]) == {"a.py": b"x = 1\n"}
+
+
+def test_take_snapshot_stores_none_for_a_file_that_does_not_exist(target):
+    assert loop.take_snapshot(["new.py"]) == {"new.py": None}
+
+
+def test_take_snapshot_keys_files_in_subfolders_by_their_relative_path(target):
+    (target / "pkg").mkdir()
+    (target / "pkg" / "b.py").write_bytes(b"y = 2\n")
+    assert loop.take_snapshot(["pkg/b.py"]) == {"pkg/b.py": b"y = 2\n"}
+
+
+def test_take_snapshot_keeps_windows_line_endings(target):
+    (target / "a.py").write_bytes(b"x = 1\r\n")
+    assert loop.take_snapshot(["a.py"]) == {"a.py": b"x = 1\r\n"}
+
+
+def test_take_snapshot_of_no_paths_is_empty(target):
+    assert loop.take_snapshot([]) == {}
