@@ -66,3 +66,17 @@ def build_answer_prompt(question, chunks, symbols):
     symbols_text = "\n".join(symbols) or "(none)"
     return (f"{ANSWER_RULES}\n\nKNOWN SYMBOLS:\n{symbols_text}\n\nCODE:\n{code}\n\n"
             f"QUESTION:\n{question}\n\nANSWER:")
+
+
+def symbol_chunks(kinds):
+    """Chunk dictionaries (the metadata plus "id" and "text") of every Chunk of these kinds, in source order."""
+    found = index.get_collection().get(where={"kind": {"$in": kinds}})
+    chunks = [dict(meta, id=id_, text=text)
+              for id_, text, meta in zip(found["ids"], found["documents"], found["metadatas"])]
+    return sorted(chunks, key=lambda chunk: (chunk["path"], chunk["start_line"]))
+
+
+def find_symbol(name):
+    """The Chunks of every function, method or class called name ("divide" finds "Calculator.divide")."""
+    kinds = ["function", "async_function", "method", "class"]
+    return [c for c in symbol_chunks(kinds) if c["name"] == name or c["name"].endswith("." + name)]

@@ -109,3 +109,62 @@ def test_prompt_says_none_when_there_are_no_symbols():
 def test_prompt_never_contains_the_patch_file_marker():
     prompt = ask.build_answer_prompt("What is in calc.py?", [DIVIDE, GREET], SYMBOLS)
     assert "=== FILE:" not in prompt
+
+
+# --- find_symbol ---
+
+SUBDIVIDE = "def subdivide(n):\n    return n / 2\n"
+
+
+def index_for_find(target):
+    index_files(target, {"calc.py": CALC, "parts.py": SUBDIVIDE, "notes.md": "# divide\n\nAbout dividing.\n"})
+
+
+def test_find_symbol_matches_a_method_by_its_short_name(temp_index):
+    index_for_find(temp_index)
+    found = ask.find_symbol("divide")
+    assert [(c["name"], c["kind"]) for c in found] == [("Calculator.divide", "method")]
+
+
+def test_find_symbol_does_not_match_part_of_a_name(temp_index):
+    index_for_find(temp_index)
+    assert "subdivide" not in [c["name"] for c in ask.find_symbol("divide")]
+    assert ask.find_symbol("divid") == []
+
+
+def test_find_symbol_finds_a_function_and_a_class(temp_index):
+    index_for_find(temp_index)
+    assert [c["name"] for c in ask.find_symbol("subdivide")] == ["subdivide"]
+    assert [(c["name"], c["kind"]) for c in ask.find_symbol("Calculator")] == [("Calculator", "class")]
+
+
+def test_find_symbol_of_a_missing_name_is_empty(temp_index):
+    index_for_find(temp_index)
+    assert ask.find_symbol("power") == []
+
+
+def test_find_symbol_is_case_sensitive(temp_index):
+    index_for_find(temp_index)
+    assert ask.find_symbol("Divide") == []
+    assert ask.find_symbol("calculator") == []
+
+
+def test_find_symbol_ignores_headings(temp_index):
+    index_files(temp_index, {"notes.md": "# divide\n\nAbout dividing.\n"})
+    assert ask.find_symbol("divide") == []
+
+
+def test_find_symbol_returns_chunk_dictionaries(temp_index):
+    index_for_find(temp_index)
+    chunk = ask.find_symbol("divide")[0]
+    for key in ["id", "text", "path", "start_line", "end_line", "name", "kind"]:
+        assert key in chunk
+    assert chunk["path"] == "calc.py"
+    assert (chunk["start_line"], chunk["end_line"]) == (5, 6)
+    assert "return a / b" in chunk["text"]
+
+
+def test_find_symbol_lists_every_match_in_path_and_line_order(temp_index):
+    index_files(temp_index, {"b.py": "def run():\n    pass\n", "a.py": "class A:\n    def run(self):\n        pass\n\n\ndef run():\n    pass\n"})
+    found = ask.find_symbol("run")
+    assert [(c["path"], c["name"]) for c in found] == [("a.py", "A.run"), ("a.py", "run"), ("b.py", "run")]
