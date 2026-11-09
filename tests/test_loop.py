@@ -378,3 +378,39 @@ def test_parse_patch_names_the_file_entry_that_is_wrong(bad_file, expected_reaso
     patch, reason = loop.parse_patch(json.dumps({"summary": "x", "files": [GOOD_FILE, bad_file]}))
     assert patch is None
     assert reason == expected_reason
+
+
+# --- build_patch_prompt ---
+
+
+def test_build_patch_prompt_lists_all_files_and_gives_the_relevant_ones_in_full(client, target):
+    prompt = loop.build_patch_prompt("add a power method to the calculator", 3)
+    for path in ["main.py", "calculator/core.py", "ioc.config.yml"]:
+        assert path in prompt
+    core = (target / "calculator" / "core.py").read_text()
+    assert "=== FILE: calculator/core.py ===\n" + core in prompt
+    assert "add a power method to the calculator" in prompt
+    assert '"files"' in prompt
+
+
+def test_build_patch_prompt_gives_each_relevant_file_only_once(client):
+    prompt = loop.build_patch_prompt("add a power method to the calculator", 5)
+    assert prompt.count("=== FILE: calculator/core.py ===") == 1
+
+
+def test_build_patch_prompt_has_no_failure_section_on_the_first_attempt(client):
+    assert "PREVIOUS ATTEMPT" not in loop.build_patch_prompt("add a power method", 3)
+
+
+def test_build_patch_prompt_shows_the_previous_patch_and_the_last_40_lines_of_the_error(client):
+    error = "\n".join(f"line {i}" for i in range(100))
+    previous = {"patch": {"summary": "my first try", "files": []}, "error": error}
+    prompt = loop.build_patch_prompt("add a power method", 3, previous)
+    assert "my first try" in prompt
+    assert "line 99" in prompt and "line 60" in prompt
+    assert "line 59" not in prompt
+
+
+def test_build_patch_prompt_copes_with_a_previous_attempt_that_had_no_patch(client):
+    previous = {"patch": None, "error": "not valid JSON"}
+    assert "not valid JSON" in loop.build_patch_prompt("add a power method", 3, previous)

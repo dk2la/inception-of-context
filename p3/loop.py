@@ -10,6 +10,9 @@ import tempfile
 import yaml
 
 from p1 import index
+from p1.chunker import read_text
+from p2 import search
+from p3.sanity import MARKER, MAX_FILES
 
 VALIDATION_TIMEOUT = 60  # seconds
 
@@ -140,3 +143,30 @@ def parse_patch(text):
             return None, f"file {number}: content must be a string"
         files.append({"path": path, "op": op, "content": content})
     return {"summary": summary, "files": files}, None
+
+
+PATCH_RULES = f"""Reply with ONLY a JSON object of this shape:
+{{"summary": "...", "files": [{{"path": "...", "op": "create" | "modify" | "delete", "content": "..."}}]}}
+- content is the COMPLETE new file, not a diff and not only the changed function.
+- Use paths exactly as listed under FILES IN THE PROJECT. Use "create" only for a new path.
+- Change at most {MAX_FILES} files. Never change ioc.config.yml.
+- Do not put "{MARKER}" lines in content.
+- Do not write placeholder functions (pass, ..., return None)."""
+
+
+def build_patch_prompt(intent, k, previous=None):
+    """The text for one Attempt. previous is None, or {"patch": the last Patch or None, "error": why it failed}."""
+    names = [os.path.relpath(p, index.TARGET_DIR).replace(os.sep, "/") for p in index.list_files(index.TARGET_DIR)]
+    parts = ["FILES IN THE PROJECT:\n" + "\n".join(names)]
+    # The Chunks only say which files matter; the model gets each of those files whole, once.
+    for path in dict.fromkeys(chunk["path"] for chunk in search.search(intent, k)):
+        text = read_text(full_path(path))
+        if text is not None:
+            parts.append(f"{MARKER} {path} ===\n{text}")
+    parts.append("INTENT: " + intent)
+    parts.append(PATCH_RULES)
+    if previous:
+        patch = json.dumps(previous["patch"], indent=2) if previous["patch"] else "no valid Patch"
+        error = "\n".join(previous["error"].splitlines()[-40:])
+        parts.append(f"YOUR PREVIOUS ATTEMPT FAILED.\nYour previous Patch:\n{patch}\nWhy it failed:\n{error}")
+    return "\n\n".join(parts)
