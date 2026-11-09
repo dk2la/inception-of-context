@@ -236,3 +236,37 @@ def test_a_new_empty_file_may_be_created(run):
 
 def test_modify_of_a_missing_file_is_not_this_rules_problem(project):
     assert sanity.empties_file(patch_of(modify("missing.py", "")), project) is None
+
+
+# --- shrinks_too_much (#97) ---
+
+@pytest.fixture
+def hundred(project):
+    """A file a.py of exactly 100 characters."""
+    write(project, "a.py", "x" * 99 + "\n")
+
+
+@pytest.mark.parametrize("length", [150, 100, 41, 40])
+def test_a_file_that_grows_or_shrinks_by_at_most_60_percent_is_allowed(hundred, run, length):
+    assert run(patch_of(modify("a.py", "y" * length))) is None
+
+
+def test_a_file_that_shrinks_by_61_percent_is_refused_with_its_name_and_numbers(hundred, run):
+    reason = run(patch_of(modify("a.py", "y" * 39)))
+    assert "a.py" in reason and "61" in reason and "60" in reason
+
+
+def test_only_the_part_that_changed_is_a_typical_shrink(run):
+    power_only = "    def power(self, a, b):\n        return a ** b\n"
+    assert "calculator/core.py" in run(patch_of(modify("calculator/core.py", power_only)))
+
+
+def test_create_delete_empty_and_missing_old_files_are_ignored(project, hundred):
+    write(project, "empty.py", "")
+    patch = patch_of(modify("empty.py", "y"), modify("missing.py", "y"), delete("a.py"))
+    assert sanity.shrinks_too_much(patch, project) is None
+    assert sanity.shrinks_too_much(patch_of(create("a.py", "y")), project) is None
+
+
+def test_a_file_replaced_by_nothing_gets_the_more_specific_empty_reason(hundred, run):
+    assert "empty" in run(patch_of(modify("a.py", "")))
