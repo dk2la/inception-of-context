@@ -53,3 +53,55 @@ def test_files_follows_the_index_when_a_file_is_added_and_deleted(client, temp_i
 def test_files_of_an_empty_index_is_an_empty_list(client):
     index.get_collection().delete(where={"path": {"$ne": ""}})
     assert client.get("/files").json() == []
+
+
+# --- GET /file ---
+
+
+def test_file_returns_the_content_and_sorted_chunk_boundaries(client, temp_index):
+    response = client.get("/file", params={"path": "calculator/core.py"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["path"] == "calculator/core.py"
+    with open(os.path.join(temp_index, "calculator", "core.py")) as f:
+        assert body["content"] == f.read()
+    starts = [chunk["start_line"] for chunk in body["chunks"]]
+    assert starts and starts == sorted(starts)
+    add = [chunk for chunk in body["chunks"] if chunk["name"] == "Calculator.add"]
+    assert len(add) == 1 and add[0]["kind"] == "method"
+    assert set(add[0]) == {"start_line", "end_line", "name", "kind"}
+
+
+def test_file_that_does_not_exist_is_404(client):
+    assert client.get("/file", params={"path": "does_not_exist.py"}).status_code == 404
+
+
+def test_file_outside_the_target_project_is_404(client, temp_index):
+    write(os.path.dirname(temp_index), "secret.txt", "secret")  # a real file, just outside the Target Project
+    for path in ["../secret.txt", "calculator/../../secret.txt", "/etc/passwd"]:
+        assert client.get("/file", params={"path": path}).status_code == 404, path
+
+
+def test_file_that_is_a_symlink_out_of_the_target_project_is_404(client, temp_index):
+    outside = write(os.path.dirname(temp_index), "secret.txt", "secret")
+    os.symlink(outside, os.path.join(temp_index, "link.txt"))
+    assert client.get("/file", params={"path": "link.txt"}).status_code == 404
+
+
+def test_file_with_a_path_that_needs_normalizing_returns_the_normalized_path(client):
+    response = client.get("/file", params={"path": "calculator/../calculator/core.py"})
+    assert response.status_code == 200
+    assert response.json()["path"] == "calculator/core.py"
+
+
+def test_file_that_is_skipped_or_binary_or_a_folder_is_404(client, temp_index):
+    write(temp_index, ".hidden/config", "x = 1")
+    write(temp_index, "calculator/core.py.ioc.tmp", "x = 1")
+    with open(os.path.join(temp_index, "image.bin"), "wb") as f:
+        f.write(b"\x00\x01\x02")
+    for path in [".hidden/config", "calculator/core.py.ioc.tmp", "image.bin", "calculator", ""]:
+        assert client.get("/file", params={"path": path}).status_code == 404, path
+
+
+def test_file_without_a_path_parameter_is_422(client):
+    assert client.get("/file").status_code == 422
