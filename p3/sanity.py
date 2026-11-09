@@ -23,8 +23,17 @@ def outside_target(patch, target_dir):
 def touches_config(patch, target_dir):
     """Refuse any change to ioc.config.yml, so the model cannot weaken the Validation Command."""
     for entry in patch["files"]:
-        if os.path.normpath(entry["path"].replace("\\", "/")) == "ioc.config.yml":
+        # lower(): on a case-insensitive disk (a macOS bind mount) IOC.config.yml is the same file
+        if os.path.normpath(entry["path"].replace("\\", "/")).lower() == "ioc.config.yml":
             return "the Patch may not change ioc.config.yml (it holds the Validation Command)"
+    return None
+
+
+def targets_folder(patch, target_dir):
+    """Refuse a path that is a folder: a Patch is made of files."""
+    for entry in patch["files"]:
+        if os.path.isdir(os.path.join(target_dir, entry["path"])):
+            return f"{entry['path']} is a folder, not a file"
     return None
 
 
@@ -122,7 +131,7 @@ def stub_function(patch, target_dir):
 # outside_target must stay first: the rules after it read files from disk and trust the paths are inside.
 # Then the cheap rules that only look at the Patch, then the ones that read files (empties_file before
 # shrinks_too_much, so "replaced by nothing" gets its more specific reason), then the one that parses code.
-RULES = [outside_target, touches_config, too_many_files, has_marker,
+RULES = [outside_target, touches_config, targets_folder, too_many_files, has_marker,
          creates_existing, empties_file, shrinks_too_much, stub_function]
 
 

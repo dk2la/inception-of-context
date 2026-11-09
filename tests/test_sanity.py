@@ -369,3 +369,18 @@ def test_the_marker_reason_wins_over_the_size_and_stub_reasons(project, run):
 def test_the_real_target_project_has_no_stubs(project, run):
     old = open(os.path.join(project, "calculator/core.py")).read()
     assert run(patch_of(modify("calculator/core.py", old))) is None
+
+
+# --- review fixes: folders and upper-case names ---
+
+
+@pytest.mark.parametrize("path", ["calculator", "calculator/", ".", "tests"])
+@pytest.mark.parametrize("make", [modify, delete])
+def test_a_folder_is_not_a_file(run, make, path):
+    assert "folder" in run(patch_of(make(path)))
+
+
+def test_ioc_config_in_other_letter_case_is_still_the_config_file(run):
+    # on a case-insensitive disk (macOS bind mount) these names are the same file
+    for path in ["IOC.config.yml", "./Ioc.Config.YML"]:
+        assert "ioc.config.yml" in run(patch_of(modify(path, "validate: true\n")))
