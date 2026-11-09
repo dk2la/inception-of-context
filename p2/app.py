@@ -1,8 +1,9 @@
 """FastAPI routes and the dashboard for Part 2."""
 import contextlib
+import os
 import threading
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from p1 import index
 from p2 import ask
@@ -52,3 +53,21 @@ def files():
     for meta in index.get_collection().get(include=["metadatas"])["metadatas"]:
         counts[meta["path"]] = counts.get(meta["path"], 0) + 1
     return [{"path": path, "chunks": counts[path]} for path in sorted(counts)]
+
+
+@app.get("/file")
+def get_file(path: str):
+    """One file of the Target Project: its content and the Chunk boundaries stored in the Index."""
+    root = os.path.realpath(index.TARGET_DIR)
+    full = os.path.realpath(os.path.join(root, path))  # realpath resolves ".." and symlinks
+    rel_path = os.path.relpath(full, root).replace(os.sep, "/")
+    # Never trust a path from a request: only files inside the Target Project, and only ones we index.
+    if not full.startswith(root + os.sep) or index.is_skipped(rel_path):
+        raise HTTPException(status_code=404, detail="file not found")
+    content = index.read_text(full)
+    if content is None:  # missing, a folder or binary
+        raise HTTPException(status_code=404, detail="file not found")
+    found = index.get_collection().get(where={"path": rel_path}, include=["metadatas"])
+    chunks = [{key: meta[key] for key in ["start_line", "end_line", "name", "kind"]} for meta in found["metadatas"]]
+    chunks.sort(key=lambda chunk: chunk["start_line"])
+    return {"path": rel_path, "content": content, "chunks": chunks}
