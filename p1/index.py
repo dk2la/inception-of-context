@@ -1,0 +1,116 @@
+"""The Index: Chunks of the Target Project stored in ChromaDB, kept in sync with the disk."""
+import argparse
+import hashlib
+import os
+
+import chromadb
+
+from p1.chunker import chunk_file, is_skipped, read_text
+
+TARGET_DIR = os.environ.get("TARGET_DIR", "/workspace")
+CHROMA_DIR = os.environ.get("CHROMA_DIR", "/data/chroma")
+
+_collection = None
+INDEX_VERSION = 0  # goes up every time the Index changes, so the keyword search knows to rebuild
+
+
+def get_collection():
+    """The one Chroma collection of this process. The Chroma client is created on first use."""
+    global _collection
+    if _collection is None:
+        client = chromadb.PersistentClient(path=CHROMA_DIR)
+        _collection = client.get_or_create_collection("chunks", metadata={"hnsw:space": "cosine"})
+    return _collection
+
+
+def chunk_id(path, text):
+    """An id computed from the Chunk itself: the same path and text always give the same id."""
+    return hashlib.sha256((path + "\n" + text).encode("utf-8")).hexdigest()
+
+
+def metadata_of(chunk):
+    """What the Index stores next to the text of a Chunk."""
+    keys = ["path", "start_line", "end_line", "name", "kind", "hash"]
+    return {key: chunk[key] for key in keys}
+
+
+def reindex_file(full_path):
+    """Make the Index match one file on disk. Return how many Chunks the file has now.
+
+    A file that is missing, skipped or binary has no Chunks, so its old Chunks are deleted.
+    """
+    global INDEX_VERSION
+    rel_path = os.path.relpath(full_path, TARGET_DIR).replace(os.sep, "/")
+    if rel_path.startswith(".."):
+        return 0  # outside the Target Project
+
+    chunks = []
+    text = None if is_skipped(rel_path) else read_text(full_path)
+    if text is not None:
+        chunks = chunk_file(rel_path, text)
+    new = {chunk_id(rel_path, chunk["text"]): chunk for chunk in chunks}
+
+    collection = get_collection()
+    found = collection.get(where={"path": rel_path}, include=["metadatas"])
+    old = dict(zip(found["ids"], found["metadatas"]))
+
+    to_delete = [i for i in old if i not in new]
+    to_add = [i for i in new if i not in old]
+    # Same text, but the lines moved (something above it changed): update the numbers only.
+    moved = [i for i in new if i in old and old[i] != metadata_of(new[i])]
+    if to_delete:
+        collection.delete(ids=to_delete)
+    if to_add:
+        collection.add(
+            ids=to_add,
+            documents=[new[i]["text"] for i in to_add],
+            metadatas=[metadata_of(new[i]) for i in to_add],
+        )
+    if moved:
+        collection.update(ids=moved, metadatas=[metadata_of(new[i]) for i in moved])
+    if to_delete or to_add or moved:
+        INDEX_VERSION += 1
+    return len(new)
+
+
+def list_files(root):
+    """Sorted absolute paths of every file under root that we should index."""
+    found = []
+    for folder, dirs, names in os.walk(root):
+        dirs[:] = [d for d in dirs if not is_skipped(d)]  # do not even walk into skipped folders
+        for name in names:
+            full_path = os.path.join(folder, name)
+            if not is_skipped(os.path.relpath(full_path, root)):
+                found.append(os.path.abspath(full_path))
+    return sorted(found)
+
+
+def index_all(root=None):
+    """Make the Index match the whole Target Project. Return the number of Chunks in the Index."""
+    root = root or TARGET_DIR
+    on_disk = set()
+    for full_path in list_files(root):
+        reindex_file(full_path)
+        on_disk.add(os.path.relpath(full_path, root).replace(os.sep, "/"))
+
+    # Files deleted while nobody was watching are only in the Index: reindexing them removes them.
+    stored = get_collection().get(include=["metadatas"])
+    for rel_path in {m["path"] for m in stored["metadatas"]} - on_disk:
+        reindex_file(os.path.join(root, rel_path))
+    return get_collection().count()
+
+
+def main():
+    """Console command: python -m p1.index [dir]"""
+    global TARGET_DIR
+    parser = argparse.ArgumentParser(description="Index the Target Project once.")
+    parser.add_argument("dir", nargs="?", help="the folder to index (default: TARGET_DIR)")
+    args = parser.parse_args()
+    if args.dir:
+        TARGET_DIR = os.path.abspath(args.dir)
+    chunks = index_all(TARGET_DIR)
+    print(f"indexed {chunks} chunks from {len(list_files(TARGET_DIR))} files")
+
+
+if __name__ == "__main__":
+    main()

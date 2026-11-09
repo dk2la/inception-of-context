@@ -99,18 +99,6 @@ def chunk_markdown(path, text):
     return split_at(path, lines, starts, "heading")
 
 
-def chunk_file(path, text):
-    """The one door into the chunker: pick the right chunker for the file's extension."""
-    extension = os.path.splitext(path)[1].lower()
-    if extension == ".py":
-        return chunk_python(path, text)
-    if extension in (".yml", ".yaml"):
-        return chunk_yaml(path, text)
-    if extension == ".md":
-        return chunk_markdown(path, text)
-    return chunk_by_regex(path, text)
-
-
 def chunk_python(path, text):
     """Chunks for every top-level function and class, every method, and the module header.
 
@@ -152,3 +140,45 @@ def chunk_python(path, text):
         header_text = "\n".join(lines[n - 1] for n in header)
         chunks.insert(0, make_chunk(path, header[0], header[-1], "<module>", "module", header_text))
     return chunks
+
+
+def chunk_file(path, text):
+    """The one door into the chunker: pick the right chunker for the file's extension."""
+    extension = os.path.splitext(path)[1].lower()
+    if extension == ".py":
+        return chunk_python(path, text)
+    if extension in (".yml", ".yaml"):
+        return chunk_yaml(path, text)
+    if extension == ".md":
+        return chunk_markdown(path, text)
+    return chunk_by_regex(path, text)
+
+
+# Folders we never index. Hidden files and folders (starting with ".") are skipped too.
+SKIPPED_NAMES = {"node_modules", ".git", "dist", "build", "venv", ".venv", "__pycache__"}
+
+
+def is_skipped(rel_path):
+    """True if a path (relative to the Target Project) must never be indexed."""
+    parts = rel_path.replace("\\", "/").split("/")
+    for part in parts:
+        if part in ("", "."):
+            continue
+        if part in SKIPPED_NAMES or part.startswith("."):
+            return True
+    return parts[-1].endswith(".ioc.tmp")
+
+
+def read_text(path):
+    """Return the file's text, or None if it is missing, a directory, binary or not UTF-8."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except (FileNotFoundError, IsADirectoryError):
+        return None
+    if b"\x00" in data[:8192]:
+        return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None

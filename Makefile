@@ -1,7 +1,7 @@
 ANSWER_MODEL = qwen2.5:3b
 PATCH_MODEL = qwen2.5-coder:3b
 
-.PHONY: build models up logs down clean
+.PHONY: build models up p1 logs down clean
 
 # The tests also run inside the container:
 #   docker compose run --rm -w /workspace ioc python -m pytest -q   (the Target Project)
@@ -21,6 +21,10 @@ models:
 up: build models
 	docker compose up -d ioc
 	@echo "IoC is running at http://localhost:8000"
+
+# Indexes the Target Project once. Run it while the server is stopped (one writer per Index).
+p1:
+	docker compose run --rm ioc python -m p1.index /workspace
 
 logs:
 	docker compose logs -f
