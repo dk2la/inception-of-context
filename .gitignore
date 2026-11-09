@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+.venv/
+
+# Index (Chroma data); in Docker it lives in a volume, a local run may put it here
+chroma/
+chroma_data/
+
+# Models
+*.onnx
+ollama_models/
+models/
+
+# Patch Loop: temporary files written while a Patch is applied
+*.ioc.tmp
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code worktrees
+.claude/worktrees/

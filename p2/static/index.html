@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inception-of-Context</title>
+<link rel="icon" href="data:,"> <!-- no icon; stops the browser asking the server for /favicon.ico -->
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 0 auto; padding: 16px; color: #222; }
+  h1 { margin: 0 0 12px; font-size: 1.5rem; }
+  [hidden] { display: none !important; }
+  button { font: inherit; cursor: pointer; }
+  button:disabled { cursor: default; }
+  nav { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid #ddd; }
+  nav button { padding: 8px 14px; border: 0; border-bottom: 3px solid transparent; background: none; }
+  nav button.active { border-bottom-color: #2563eb; font-weight: bold; }
+  table { border-collapse: collapse; }
+  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
+  pre { margin: 0; padding: 8px; overflow-x: auto; background: #f6f6f6; }
+  #error { margin-bottom: 12px; padding: 8px; color: #b00020; background: #fdecea; white-space: pre-line; }
+  #error:empty { display: none; }
+  #status-cards { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .card { min-width: 150px; padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; }
+  .card small { display: block; color: #666; }
+  .card strong { overflow-wrap: anywhere; }
+  #file-counts th:last-child, #file-counts td:last-child { text-align: right; }
+  #file-counts .total { font-weight: bold; }
+  .changed, .highlight { background: #fff3b0; }
+  #activity { max-height: 18em; margin: 0; padding: 4px 8px; overflow-y: auto; list-style: none; border: 1px solid #ccc; font-family: monospace; white-space: pre; }
+  #activity .deleted { color: #b00020; }
+  .split { display: flex; gap: 16px; align-items: flex-start; }
+  #file-list { display: flex; flex-direction: column; gap: 2px; min-width: 200px; }
+  #file-list button { text-align: left; }
+  #file-view { flex: 1; min-width: 0; }
+  #chunk-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+  #file-content { max-height: 70vh; overflow: auto; padding: 0; font-family: monospace; }
+  .line { width: max-content; min-width: 100%; }
+  .number { display: inline-block; width: 3em; margin-right: 1em; text-align: right; color: #999; user-select: none; }
+  #chunks-range { margin: 0 8px; }
+  #chunk-table summary { cursor: pointer; font-family: monospace; white-space: pre; }
+  textarea { width: 100%; box-sizing: border-box; font: inherit; }
+  input[type=number] { width: 4em; }
+  .muted { color: #666; }
+  .ok { color: #1a7f37; }
+  .fail { color: #b00020; }
+  #answer-text { margin: 4px 0 12px; white-space: pre-wrap; }
+  .box { margin: 8px 0; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+  .box-title { font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>Inception-of-Context</h1>
+<div id="error"></div>
+
+<nav>
+  <button data-tab="overview">Overview</button>
+  <button data-tab="files">Files</button>
+  <button data-tab="explorer">ChromaDB Explorer</button>
+  <button data-tab="ask">Ask & Retrieve</button>
+  <button data-tab="patch">Patch Loop</button>
+</nav>
+
+<section class="tab" id="tab-overview">
+  <h2>Overview</h2>
+  <div id="status-cards"></div>
+
+  <h3>Chunks per file</h3>
+  <table id="file-counts">
+    <thead><tr><th>File</th><th>Chunks</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <h3>Activity</h3>
+  <ol id="activity"></ol>
+</section>
+
+<section class="tab" id="tab-files" hidden>
+  <h2>Files</h2>
+  <div class="split">
+    <div id="file-list"></div>
+    <div id="file-view">
+      <div id="chunk-chips"></div>
+      <pre id="file-content"></pre>
+    </div>
+  </div>
+</section>
+
+<section class="tab" id="tab-explorer" hidden>
+  <h2>ChromaDB Explorer</h2>
+  <p>
+    <label>Chunks per page
+      <select id="chunk-limit"><option>10</option><option selected>25</option><option>50</option></select>
+    </label>
+    <button id="chunks-prev">Previous</button>
+    <span id="chunks-range"></span>
+    <button id="chunks-next">Next</button>
+  </p>
+  <table id="chunk-table">
+    <thead><tr><th>Id</th><th>File</th><th>Lines</th><th>Name</th><th>Kind</th><th>Text</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<section class="tab" id="tab-ask" hidden>
+  <h2>Ask & Retrieve</h2>
+  <textarea id="query" rows="3" placeholder="Type a Question or some text to search for"></textarea>
+  <p>
+    <label>Chunks to return (k)
+      <select id="ask-k"><option>3</option><option selected>5</option><option>8</option><option>10</option></select>
+    </label>
+    <button id="retrieve-button">Retrieve</button>
+    <button id="ask-button">Ask</button>
+  </p>
+  <div id="ask-message"></div>
+  <div id="answer" hidden>
+    <div id="answer-label" class="muted"></div>
+    <div id="answer-text"></div>
+  </div>
+  <div id="results"></div>
+</section>
+
+<section class="tab" id="tab-patch" hidden>
+  <h2>Patch Loop</h2>
+  <p id="patch-unavailable" class="muted" hidden>Patch Loop is not available: this server runs Part 2 only. Start <code>p3.app</code> to enable it.</p>
+  <div id="patch-form" hidden>
+    <textarea id="intent" rows="3" placeholder="Describe the change to make, e.g. add a power function to Calculator"></textarea>
+    <p>
+      <label>Chunks to retrieve (k) <input id="patch-k" type="number" min="1" value="5"></label>
+      <label>Max Attempts <input id="patch-attempts" type="number" min="1" max="3" value="3"></label>
+      <button id="patch-run">Run</button>
+    </p>
+    <div id="patch-message"></div>
+    <div id="patch-result"></div>
+  </div>
+</section>
+
+<script>
+// ---------- Helpers ----------
+
+// Calls the server and returns the JSON reply. A bad status throws an Error like "503 <detail>".
+async function api(path, options) {
+  const response = await fetch(path, options);
+  if (response.ok) return response.json();
+  const text = await response.text();
+  let detail = text;
+  try {
+    detail = JSON.parse(text).detail; // FastAPI errors look like {"detail": "..."}
+  } catch (e) {} // not JSON: keep the plain text
+  throw new Error(response.status + " " + (typeof detail === "string" ? detail : text));
+}
+
+// Sends a JSON body with POST and returns the JSON reply.
+function post(path, body) {
+  return api(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+}
+
+// Makes an element. The text is set with textContent, so it is always shown as plain text, never as HTML.
+function el(tag, text = "", className = "") {
+  const element = document.createElement(tag);
+  element.textContent = text;
+  element.className = className;
+  return element;
+}
+
+// Writes a status line into the element with this id: grey normally, red for an error.
+function showMessage(id, text, isError = false) {
+  const box = document.getElementById(id);
+  box.textContent = text;
+  box.className = isError ? "fail" : "muted";
+}
+
+// Each part of the page has its own error slot, so one part clearing its message never hides another's.
+const errors = {};
+
+function setError(name, message) {
+  if (message) errors[name] = message;
+  else delete errors[name];
+  document.getElementById("error").textContent = Object.values(errors).join("\n");
+}
+
+// ---------- Tabs ----------
+
+// Tab name -> function to run each time the tab is shown.
+const tabLoaders = {files: loadFileList, explorer: loadChunks};
+
+function showTab(name) {
+  for (const section of document.querySelectorAll(".tab")) {
+    section.hidden = section.id !== "tab-" + name;
+  }
+  for (const button of document.querySelectorAll("nav button")) {
+    button.classList.toggle("active", button.dataset.tab === name);
+  }
+  location.hash = name;
+  if (tabLoaders[name]) tabLoaders[name]();
+}
+
+// ---------- Overview ----------
+
+let answerModel = "the local model"; // the name shown under an answer; replaced by the real one from /status
+
+// Draws one card per value of GET /status.
+async function loadStatus() {
+  try {
+    const s = await api("/status");
+    if (s.answer_model) answerModel = s.answer_model;
+    const cards = [
+      ["Chunks", s.chunks],
+      ["Target Project", s.target_dir],
+      ["Index", s.chroma_dir],
+      ["Answer model", s.answer_model],
+      ["Patch model", s.patch_model],
+      ["Ollama", s.ollama_host],
+    ];
+    const container = document.getElementById("status-cards");
+    container.replaceChildren();
+    for (const [label, value] of cards) {
+      const card = el("div", "", "card");
+      card.append(el("small", label), el("strong", value ?? "-"));
+      container.append(card);
+    }
+    setError("status", "");
+  } catch (e) {
+    setError("status", "Cannot reach the server: " + e.message);
+  }
+}
+
+// Builds a table row from a list of cell texts.
+function row(texts, className = "") {
+  const tr = el("tr", "", className);
+  for (const text of texts) tr.append(el("td", text));
+  return tr;
+}
+
+let lastCounts = null; // path -> Chunk count at the previous refresh; null before the first one
+
+// Fills the "Chunks per file" table from GET /files. A row whose count changed since the last refresh is highlighted.
+async function loadFiles() {
+  try {
+    const files = await api("/files");
+    const tbody = document.querySelector("#file-counts tbody");
+    tbody.replaceChildren();
+    const counts = {};
+    let total = 0;
+    for (const file of files) {
+      const changed = lastCounts !== null && lastCounts[file.path] !== file.chunks;
+      tbody.append(row([file.path, file.chunks], changed ? "changed" : ""));
+      counts[file.path] = file.chunks;
+      total += file.chunks;
+    }
+    if (files.length === 0) {
+      const empty = row(["The Index is empty."]);
+      empty.firstChild.colSpan = 2;
+      tbody.append(empty);
+    } else {
+      tbody.append(row(["Total", total], "total"));
+    }
+    lastCounts = counts;
+    setError("file-counts", "");
+  } catch (e) {
+    setError("file-counts", "Cannot load Chunks per file: " + e.message);
+  }
+}
+
+function refreshOverview() {
+  loadStatus();
+  loadFiles();
+}
+
+// One line of the activity feed, e.g. "12:03:15  indexed  calculator/core.py  (6 chunks)".
+function formatEvent(event) {
+  const time = new Date(event.time * 1000).toLocaleTimeString(); // event.time is in seconds
+  return `${time}  ${event.type}  ${event.path}  (${event.chunks} chunks)`;
+}
+
+// Shows the Watcher's events as the server pushes them (GET /events), newest first.
+function startActivityFeed() {
+  const list = document.getElementById("activity");
+  const source = new EventSource("/events");
+  source.onopen = () => {
+    list.replaceChildren(); // the server replays all its events on every (re)connect
+    setError("feed", "");
+  };
+  source.onmessage = (message) => {
+    const event = JSON.parse(message.data);
+    list.prepend(el("li", formatEvent(event), event.type));
+    if (list.children.length > 200) list.lastElementChild.remove();
+  };
+  source.onerror = () => setError("feed", "Live feed disconnected, reconnecting...");
+}
+
+// ---------- Files ----------
+
+let selectedPath = null; // the file shown in the Files tab; kept when the user leaves and comes back
+
+// Lists the indexed files as buttons, then reopens the file that was selected before.
+async function loadFileList() {
+  try {
+    const files = await api("/files");
+    const list = document.getElementById("file-list");
+    list.replaceChildren();
+    for (const file of files) {
+      const button = el("button", file.path);
+      button.onclick = () => showFile(file.path);
+      list.append(button);
+    }
+    setError("file-list", "");
+    if (selectedPath) showFile(selectedPath);
+  } catch (e) {
+    setError("file-list", "Cannot load the file list: " + e.message);
+  }
+}
+
+// Shows one file line by line, with one chip per Chunk.
+async function showFile(path) {
+  try {
+    const file = await api("/file?path=" + encodeURIComponent(path));
+    selectedPath = path;
+    const content = document.getElementById("file-content");
+    content.replaceChildren();
+    const lines = file.content.split("\n");
+    if (lines[lines.length - 1] === "") lines.pop(); // the last newline does not start another line
+    lines.forEach((text, index) => {
+      const line = el("div", "", "line");
+      line.append(el("span", index + 1, "number"), el("span", text));
+      content.append(line);
+    });
+    const chips = document.getElementById("chunk-chips");
+    chips.replaceChildren();
+    for (const chunk of file.chunks) {
+      const chip = el("button", `${chunk.name}  ${chunk.start_line}–${chunk.end_line}  ${chunk.kind}`);
+      chip.onclick = () => highlightChunk(chunk);
+      chips.append(chip);
+    }
+    setError("file", "");
+  } catch (e) {
+    setError("file", "Cannot load " + path + ": " + e.message);
+  }
+}
+
+// Marks the lines of one Chunk. Line numbers start at 1 and the range includes both ends.
+function highlightChunk(chunk) {
+  const lines = document.querySelectorAll("#file-content .line");
+  lines.forEach((line, index) => {
+    const number = index + 1;
+    line.classList.toggle("highlight", number >= chunk.start_line && number <= chunk.end_line);
+  });
+  lines[chunk.start_line - 1]?.scrollIntoView({block: "center"});
+}
+
+// ---------- ChromaDB Explorer ----------
+
+let chunkOffset = 0; // how many Chunks the current page skips
+
+function chunkLimit() {
+  return Number(document.getElementById("chunk-limit").value);
+}
+
+// The first line of a text, cut to 80 characters, followed by "…" when something was left out.
+function firstLine(text) {
+  const line = text.split("\n")[0].slice(0, 80);
+  return line === text ? line : line + " …";
+}
+
+// One table row for a Chunk. The full text sits in a <details> box that opens on click.
+function chunkRow(chunk) {
+  const id = el("td", chunk.id.slice(0, 8));
+  id.title = chunk.id; // the full id appears as a tooltip
+  const details = el("details");
+  details.append(el("summary", firstLine(chunk.text)), el("pre", chunk.text));
+  const text = el("td");
+  text.append(details);
+  const tr = el("tr");
+  tr.append(id, el("td", chunk.path), el("td", `${chunk.start_line}–${chunk.end_line}`), el("td", chunk.name), el("td", chunk.kind), text);
+  return tr;
+}
+
+// Shows the page of Chunks that starts at chunkOffset (GET /chunks).
+async function loadChunks() {
+  const limit = chunkLimit();
+  try {
+    const page = await api(`/chunks?offset=${chunkOffset}&limit=${limit}`);
+    if (page.items.length === 0 && chunkOffset > 0) { // the Index shrank: start again from the first page
+      chunkOffset = 0;
+      return loadChunks();
+    }
+    const tbody = document.querySelector("#chunk-table tbody");
+    tbody.replaceChildren();
+    for (const chunk of page.items) tbody.append(chunkRow(chunk));
+    const first = chunkOffset + 1;
+    const last = chunkOffset + page.items.length;
+    document.getElementById("chunks-range").textContent = page.total === 0 ? "The Index is empty" : `Chunks ${first}–${last} of ${page.total}`;
+    document.getElementById("chunks-prev").disabled = chunkOffset === 0;
+    document.getElementById("chunks-next").disabled = chunkOffset + limit >= page.total;
+    setError("chunks", "");
+  } catch (e) {
+    setError("chunks", "Cannot load Chunks: " + e.message);
+  }
+}
+
+// ---------- Ask & Retrieve ----------
+
+// "similarity 0.612   score 0.0325", or "" for a Chunk that has no scores.
+function formatScores(chunk) {
+  if (typeof chunk.similarity !== "number" || typeof chunk.score !== "number") return "";
+  return `similarity ${chunk.similarity.toFixed(3)}   score ${chunk.score.toFixed(4)}`;
+}
+
+// Fills the container with one card per Chunk: rank, location, name, kind, scores (if any) and text.
+function renderSources(container, chunks) {
+  container.replaceChildren();
+  if (chunks.length === 0) container.append(el("p", "No sources.", "muted"));
+  chunks.forEach((chunk, index) => {
+    const kind = chunk.kind ? ` (${chunk.kind})` : "";
+    const card = el("div", "", "box");
+    card.append(el("div", `#${index + 1}  ${chunk.path} : ${chunk.start_line}–${chunk.end_line}   ${chunk.name}${kind}`, "box-title"));
+    const scores = formatScores(chunk);
+    if (scores) card.append(el("div", scores, "muted"));
+    card.append(el("pre", chunk.text));
+    container.append(card);
+  });
+}
+
+function askK() {
+  return Number(document.getElementById("ask-k").value);
+}
+
+// While a request runs, both buttons are disabled so nobody sends it twice.
+function setAskBusy(busy) {
+  for (const button of document.querySelectorAll("#tab-ask button")) button.disabled = busy;
+}
+
+function clearAskResults() {
+  document.getElementById("answer").hidden = true;
+  document.getElementById("results").replaceChildren();
+}
+
+// Retrieve button: show the Chunks that POST /context finds for the text.
+async function retrieve() {
+  const query = document.getElementById("query").value.trim();
+  if (query === "") {
+    showMessage("ask-message", "Type a query first.", true);
+    return;
+  }
+  clearAskResults();
+  setAskBusy(true);
+  showMessage("ask-message", "Retrieving…");
+  try {
+    const data = await post("/context", {query, k: askK()});
+    renderSources(document.getElementById("results"), data.results);
+    showMessage("ask-message", "");
+  } catch (e) {
+    showMessage("ask-message", "Request failed: " + e.message, true);
+  } finally {
+    setAskBusy(false);
+  }
+}
+
+// Ask button: send the text as a Question to POST /ask; show the answer, how it was made, and its sources.
+async function ask() {
+  const question = document.getElementById("query").value.trim();
+  if (question === "") {
+    showMessage("ask-message", "Type a question first.", true);
+    return;
+  }
+  clearAskResults();
+  setAskBusy(true);
+  showMessage("ask-message", "Thinking… the local model can take up to a minute on CPU.");
+  try {
+    const data = await post("/ask", {question, k: askK()});
+    document.getElementById("answer-text").textContent = data.answer;
+    document.getElementById("answer-label").textContent = data.used_llm ? "Answered by " + answerModel : "Answered from the Index (no LLM)";
+    document.getElementById("answer").hidden = false;
+    renderSources(document.getElementById("results"), data.sources);
+    showMessage("ask-message", "");
+  } catch (e) {
+    showMessage("ask-message", "Request failed: " + e.message, true); // a 503 says that Ollama is not reachable
+  } finally {
+    setAskBusy(false);
+  }
+}
+
+// ---------- Patch Loop ----------
+
+// POST /patch only exists when p3.app is running. The server's list of routes (GET /openapi.json) tells us,
+// so we never send a POST just to find out. Shows the form if the route exists, a "not available" note if not.
+async function checkPatchAvailable() {
+  let available = false;
+  try {
+    const spec = await api("/openapi.json");
+    available = "/patch" in spec.paths;
+  } catch (e) {} // server down or no list of routes: treat the Patch Loop as not available
+  document.getElementById("patch-unavailable").hidden = available;
+  document.getElementById("patch-form").hidden = !available;
+}
+
+// The four steps of an Attempt: the key in the reply and the label shown.
+const PATCH_STEPS = [["generation", "Generate"], ["sanity", "Sanity Check"], ["apply", "Apply"], ["validation", "Validate"]];
+
+// The detail text of one step. A step has at most one of: files written, summary, error, reason.
+function stepDetail(step) {
+  if (step.files) return step.files.join(", ");
+  return step.summary || step.error || step.reason || "";
+}
+
+// One line for one step: ✓, ✗ or "skipped" (the step was never reached), plus its detail.
+// The validation log can be long, so it sits in a <details> box.
+function stepLine(label, step) {
+  const line = el("div");
+  if (!step) {
+    line.append(el("span", `– ${label}: skipped`, "muted"));
+    return line;
+  }
+  const detail = stepDetail(step);
+  line.append(el("span", `${step.ok ? "✓" : "✗"} ${label}${detail ? ": " + detail : ""}`, step.ok ? "ok" : "fail"));
+  if (step.log) {
+    const log = el("details");
+    log.append(el("summary", "validation log"), el("pre", step.log));
+    line.append(log);
+  }
+  return line;
+}
+
+// A card for one Attempt: its title and one line per step.
+function attemptCard(attempt) {
+  const card = el("div", "", "box");
+  card.append(el("div", `Attempt ${attempt.number}: ${attempt.ok ? "passed" : "failed"}`, "box-title"));
+  for (const [key, label] of PATCH_STEPS) card.append(stepLine(label, attempt[key]));
+  return card;
+}
+
+// Shows the reply of POST /patch: the status, every Attempt, and the final Patch.
+function renderPatchResult(container, data) {
+  container.replaceChildren();
+  container.append(el("h3", `Status: ${data.status}`, data.status === "success" ? "ok" : "fail"));
+  for (const attempt of data.attempts) container.append(attemptCard(attempt));
+  container.append(el("h3", "Patch"));
+  if (data.patch) {
+    container.append(el("pre", JSON.stringify(data.patch, null, 2)));
+  } else {
+    container.append(el("p", "No Patch: every Attempt failed and the Target Project was rolled back."));
+  }
+}
+
+// Run button: send the Intent to POST /patch and wait. The loop can take minutes on CPU.
+async function runPatchLoop() {
+  const intent = document.getElementById("intent").value.trim();
+  if (intent === "") {
+    showMessage("patch-message", "Type an Intent first.", true);
+    return;
+  }
+  const k = Math.max(1, Number(document.getElementById("patch-k").value) || 5);
+  const maxAttempts = Math.min(3, Math.max(1, Number(document.getElementById("patch-attempts").value) || 3));
+  const button = document.getElementById("patch-run");
+  const result = document.getElementById("patch-result");
+  result.replaceChildren();
+  button.disabled = true;
+  showMessage("patch-message", "Running… this can take a few minutes on CPU.");
+  try {
+    renderPatchResult(result, await post("/patch", {intent, k, max_attempts: maxAttempts}));
+    showMessage("patch-message", "");
+  } catch (e) {
+    showMessage("patch-message", "Request failed: " + e.message, true); // a 503 says that Ollama is not reachable
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// ---------- Start ----------
+
+// Connect the buttons.
+for (const button of document.querySelectorAll("nav button")) {
+  button.onclick = () => showTab(button.dataset.tab);
+}
+document.getElementById("chunks-prev").onclick = () => {
+  chunkOffset = Math.max(0, chunkOffset - chunkLimit());
+  loadChunks();
+};
+document.getElementById("chunks-next").onclick = () => {
+  chunkOffset += chunkLimit();
+  loadChunks();
+};
+document.getElementById("chunk-limit").onchange = () => {
+  chunkOffset = 0;
+  loadChunks();
+};
+document.getElementById("retrieve-button").onclick = retrieve;
+document.getElementById("ask-button").onclick = ask;
+document.getElementById("patch-run").onclick = runPatchLoop;
+
+// Start the parts that run by themselves.
+refreshOverview();
+setInterval(refreshOverview, 3000);
+startActivityFeed();
+checkPatchAvailable();
+
+// Open the tab named in the URL (#files), or Overview.
+const firstTab = location.hash.slice(1);
+showTab(document.getElementById("tab-" + firstTab) ? firstTab : "overview");
+</script>
+</body>
+</html>
