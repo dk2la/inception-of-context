@@ -6,6 +6,7 @@ A Patch looks like {"summary": ..., "files": [{"path": ..., "op": "create|modify
 import os
 
 MAX_FILES = 3
+MAX_SHRINK = 60  # percent
 
 
 def outside_target(patch, target_dir):
@@ -60,8 +61,21 @@ def empties_file(patch, target_dir):
     return None
 
 
+def shrinks_too_much(patch, target_dir):
+    """Refuse to modify a file into less than 40 % of its length: the model probably left out most of it."""
+    for entry in patch["files"]:
+        if entry.get("op") != "modify":
+            continue
+        old = old_content(entry, target_dir)
+        new = entry.get("content") or ""
+        if old.strip() and len(new) < len(old) * (100 - MAX_SHRINK) / 100:
+            shrink = round(100 - 100 * len(new) / len(old))
+            return f"{entry['path']} would shrink by {shrink} % (limit {MAX_SHRINK} %), send the whole file"
+    return None
+
+
 # outside_target must stay first: the rules after it read files from disk and trust the paths are inside.
-RULES = [outside_target, touches_config, too_many_files, creates_existing, empties_file]
+RULES = [outside_target, touches_config, too_many_files, creates_existing, empties_file, shrinks_too_much]
 
 
 def check_patch(patch, target_dir):
