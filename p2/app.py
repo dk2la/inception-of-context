@@ -3,7 +3,7 @@ import contextlib
 import os
 import threading
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 
 from p1 import index
 from p2 import ask
@@ -71,3 +71,23 @@ def get_file(path: str):
     chunks = [{key: meta[key] for key in ["start_line", "end_line", "name", "kind"]} for meta in found["metadatas"]]
     chunks.sort(key=lambda chunk: chunk["start_line"])
     return {"path": rel_path, "content": content, "chunks": chunks}
+
+
+@app.get("/chunks")
+def chunks(offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):
+    """One page of the Chunks stored in the Index."""
+    collection = index.get_collection()
+    found = collection.get(offset=offset, limit=limit, include=["documents", "metadatas"])
+    items = []
+    for i in range(len(found["ids"])):  # ids, documents and metadatas are parallel lists
+        meta = found["metadatas"][i]
+        items.append({
+            "id": found["ids"][i],
+            "path": meta["path"],
+            "start_line": meta["start_line"],
+            "end_line": meta["end_line"],
+            "name": meta["name"],
+            "kind": meta["kind"],
+            "text": found["documents"][i],
+        })
+    return {"total": collection.count(), "offset": offset, "limit": limit, "items": items}
