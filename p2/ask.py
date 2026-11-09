@@ -4,6 +4,8 @@ import os
 import urllib.error
 import urllib.request
 
+from p1 import index
+
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
 ANSWER_MODEL = "qwen2.5:3b"
 PATCH_MODEL = "qwen2.5-coder:3b"
@@ -34,3 +36,14 @@ def call_llm(model, prompt, json_mode=False):
         raise LLMError(f"Ollama at {OLLAMA_HOST} answered {error.code}: is the model pulled? Run `make models`.")
     except (urllib.error.URLError, TimeoutError) as error:
         raise LLMError(f"Ollama is not reachable at {OLLAMA_HOST}: {error}")
+
+
+def known_symbols(chunks):
+    """Every function, class and method in the files of these Chunks, as sorted lines "path: name (kind)"."""
+    lines = set()
+    for path in {chunk["path"] for chunk in chunks}:
+        found = index.get_collection().get(where={"path": path}, include=["metadatas"])
+        for meta in found["metadatas"]:
+            if meta["kind"] in ("function", "async_function", "class", "method"):
+                lines.add(f"{path}: {meta['name']} ({meta['kind']})")
+    return sorted(lines)
