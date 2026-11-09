@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import sys
@@ -317,3 +318,63 @@ def test_validation_leaves_no_pycache_in_the_target_project(target):
     ok, log = loop.run_validation(["calc.py"])
     assert ok is True
     assert list(target.glob("**/__pycache__")) == []
+
+
+# --- parse_patch ---
+
+GOOD_PATCH = {"summary": "Add power", "files": [{"path": "a.py", "op": "modify", "content": "x"}]}
+
+
+def test_parse_patch_accepts_a_well_formed_patch():
+    assert loop.parse_patch(json.dumps(GOOD_PATCH)) == (GOOD_PATCH, None)
+
+
+def test_parse_patch_drops_keys_the_model_invented():
+    patch = dict(GOOD_PATCH, thoughts="hmm")
+    patch["files"] = [dict(GOOD_PATCH["files"][0], extra=1)]
+    assert loop.parse_patch(json.dumps(patch)) == (GOOD_PATCH, None)
+
+
+def test_parse_patch_fills_in_a_missing_summary():
+    patch, reason = loop.parse_patch(json.dumps({"files": GOOD_PATCH["files"]}))
+    assert reason is None
+    assert patch["summary"] == ""
+
+
+def test_parse_patch_fills_in_a_missing_content_of_a_delete():
+    text = json.dumps({"files": [{"path": "old.md", "op": "delete"}]})
+    patch, reason = loop.parse_patch(text)
+    assert reason is None
+    assert patch["files"] == [{"path": "old.md", "op": "delete", "content": ""}]
+
+
+@pytest.mark.parametrize("text, expected_reason", [
+    ("Sure! Here is the code", "the model did not return valid JSON: Expecting value"),
+    ("[1, 2]", "the Patch must be a JSON object"),
+    ('{"summary": "x"}', "the Patch has no files"),
+    ('{"files": []}', "the Patch has no files"),
+    ('{"files": "a.py"}', "the Patch has no files"),
+])
+def test_parse_patch_gives_a_reason_when_the_top_level_is_wrong(text, expected_reason):
+    patch, reason = loop.parse_patch(text)
+    assert patch is None
+    assert reason.startswith(expected_reason)
+
+
+GOOD_FILE = {"path": "a.py", "op": "modify", "content": "x"}
+
+
+@pytest.mark.parametrize("bad_file, expected_reason", [
+    ("just a string", "file 2: must be a JSON object"),
+    ({"op": "modify", "content": "x"}, "file 2: path must be a non-empty string"),
+    ({"path": "", "op": "modify", "content": "x"}, "file 2: path must be a non-empty string"),
+    ({"path": 7, "op": "modify", "content": "x"}, "file 2: path must be a non-empty string"),
+    ({"path": "b.py", "op": "update", "content": "x"}, "file 2: op must be create, modify or delete, got 'update'"),
+    ({"path": "b.py", "content": "x"}, "file 2: op must be create, modify or delete, got None"),
+    ({"path": "b.py", "op": "modify", "content": 42}, "file 2: content must be a string"),
+    ({"path": "b.py", "op": "create"}, "file 2: content must be a string"),
+])
+def test_parse_patch_names_the_file_entry_that_is_wrong(bad_file, expected_reason):
+    patch, reason = loop.parse_patch(json.dumps({"summary": "x", "files": [GOOD_FILE, bad_file]}))
+    assert patch is None
+    assert reason == expected_reason

@@ -1,4 +1,5 @@
 """The Patch Loop: the small steps it is built from (config, validate, snapshot, apply, parse)."""
+import json
 import os
 import shlex
 import signal
@@ -111,3 +112,31 @@ def apply_patch(patch):
         if entry["op"] == "delete":
             os.remove(full_path(entry["path"]))
     return [entry["path"] for entry in patch["files"]]
+
+
+def parse_patch(text):
+    """Read the model's JSON answer. Return (patch, None), or (None, reason) if its shape is wrong."""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        return None, f"the model did not return valid JSON: {e}"
+    if not isinstance(data, dict):
+        return None, "the Patch must be a JSON object"
+    if not isinstance(data.get("files"), list) or not data["files"]:
+        return None, "the Patch has no files"
+    summary = data["summary"] if isinstance(data.get("summary"), str) else ""
+    files = []
+    for number, entry in enumerate(data["files"], start=1):
+        if not isinstance(entry, dict):
+            return None, f"file {number}: must be a JSON object"
+        path, op, content = entry.get("path"), entry.get("op"), entry.get("content")
+        if not isinstance(path, str) or not path:
+            return None, f"file {number}: path must be a non-empty string"
+        if op not in ("create", "modify", "delete"):
+            return None, f"file {number}: op must be create, modify or delete, got {op!r}"
+        if op == "delete":
+            content = ""
+        elif not isinstance(content, str):
+            return None, f"file {number}: content must be a string"
+        files.append({"path": path, "op": op, "content": content})
+    return {"summary": summary, "files": files}, None
