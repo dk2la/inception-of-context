@@ -38,8 +38,6 @@ async def lifespan(app):
 
 app = FastAPI(lifespan=lifespan)
 
-STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-
 
 @app.get("/status")
 def status():
@@ -65,6 +63,8 @@ def files():
 @app.get("/file")
 def get_file(path: str):
     """One file of the Target Project: its content and the Chunk boundaries stored in the Index."""
+    if "\x00" in path:  # a NUL byte makes the file functions raise ValueError
+        raise HTTPException(status_code=404, detail="file not found")
     root = os.path.realpath(index.TARGET_DIR)
     full = os.path.realpath(os.path.join(root, path))  # realpath resolves ".." and symlinks
     rel_path = os.path.relpath(full, root).replace(os.sep, "/")

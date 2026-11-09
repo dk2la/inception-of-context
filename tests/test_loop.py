@@ -660,3 +660,54 @@ def test_the_part_2_app_alone_has_no_patch_route():
     result = subprocess.run([sys.executable, "-c", code], cwd=REPO_ROOT, capture_output=True, text=True)
     assert "/status" in result.stdout
     assert "/patch" not in result.stdout
+
+
+# --- review fixes ---
+
+
+def test_apply_patch_keeps_the_file_mode_and_rollback_gives_it_back(target):
+    path = target / "main.py"
+    path.write_text("print(1)\n")
+    path.chmod(0o755)
+    patch = {"summary": "s", "files": [{"path": "main.py", "op": "modify", "content": "print(2)\n"}]}
+    snapshot = loop.take_snapshot(["main.py"])
+    loop.apply_patch(patch)
+    assert path.stat().st_mode & 0o777 == 0o755
+    loop.restore_snapshot(snapshot)
+    assert path.read_text() == "print(1)\n"
+    assert path.stat().st_mode & 0o777 == 0o755
+
+
+def test_only_one_patch_loop_runs_at_a_time(client, target, monkeypatch):
+    seen = []
+
+    def call_llm(model, prompt, json_mode=False):
+        seen.append(loop.PATCH_LOCK.locked())
+        return "not json"
+
+    monkeypatch.setattr(loop.ask, "call_llm", call_llm)
+    loop.run_patch_loop("anything", 3, 1)
+    assert seen == [True]
+    assert not loop.PATCH_LOCK.locked()
+
+
+def test_a_validation_that_cannot_run_is_reported_as_a_validation_failure(client, target, fake_llm):
+    (target / "ioc.config.yml").write_text("something_else: true\n")
+    before = read_tree(target)
+    fake_llm.replies = [power_reply(target)]
+    attempt = loop.run_attempt("add a power method", 3, None, 1)
+    assert attempt["ok"] is False
+    assert attempt["apply"]["ok"] is True
+    assert attempt["validation"]["ok"] is False
+    assert attempt["error"].startswith("validation failed")
+    assert read_tree(target) == before
+
+
+def test_a_patch_that_names_a_folder_is_refused_not_a_500(client, target, fake_llm):
+    before = read_tree(target)
+    reply = json.dumps(make_patch(("calculator", "modify", "x = 1\n")))
+    fake_llm.replies = [reply]
+    response = client.post("/patch", json={"intent": "break it", "k": 3, "max_attempts": 1})
+    assert response.status_code == 200
+    assert response.json()["status"] == "failed"
+    assert read_tree(target) == before
