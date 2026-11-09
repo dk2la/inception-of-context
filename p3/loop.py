@@ -10,6 +10,9 @@ import tempfile
 import yaml
 
 from p1 import index
+from p1.chunker import read_text
+from p2 import ask, search
+from p3.sanity import MARKER, MAX_FILES, check_patch
 
 VALIDATION_TIMEOUT = 60  # seconds
 
@@ -39,7 +42,9 @@ def run_validation(changed_files):
     path = os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", "")
     # Python skips recompiling a file whose size and modification second match its old .pyc. After a Rollback
     # that can run the patched code, so validation keeps its .pyc files in a temporary folder, not in the project.
+    # For the same reason (nothing new may be left in the project) pytest gets no .pytest_cache folder.
     with tempfile.TemporaryDirectory() as pycache:
+        env = dict(os.environ, PATH=path, PYTHONPYCACHEPREFIX=pycache, PYTEST_ADDOPTS="-p no:cacheprovider")
         # Popen, not run: with shell=True, run() on timeout kills only the shell, and pytest keeps running.
         # start_new_session puts the shell and its children in one process group that we can kill together.
         proc = subprocess.Popen(
@@ -50,7 +55,7 @@ def run_validation(changed_files):
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
             text=True,
-            env=dict(os.environ, PATH=path, PYTHONPYCACHEPREFIX=pycache),
+            env=env,
             start_new_session=True,
         )
         try:
@@ -140,3 +145,83 @@ def parse_patch(text):
             return None, f"file {number}: content must be a string"
         files.append({"path": path, "op": op, "content": content})
     return {"summary": summary, "files": files}, None
+
+
+PATCH_RULES = f"""Reply with ONLY a JSON object of this shape:
+{{"summary": "...", "files": [{{"path": "...", "op": "create" | "modify" | "delete", "content": "..."}}]}}
+- content is the COMPLETE new file, not a diff and not only the changed function.
+- Use paths exactly as listed under FILES IN THE PROJECT. Use "create" only for a new path.
+- Change at most {MAX_FILES} files. Never change ioc.config.yml.
+- Do not put "{MARKER}" lines in content.
+- Do not write placeholder functions (pass, ..., return None)."""
+
+
+def last_lines(text, count=40):
+    """The end of a log is where the error is, so that is the part we keep."""
+    return "\n".join(text.splitlines()[-count:])
+
+
+def build_patch_prompt(intent, k, previous=None):
+    """The text for one Attempt. previous is None, or {"patch": the last Patch or None, "error": why it failed}."""
+    names = [os.path.relpath(p, index.TARGET_DIR).replace(os.sep, "/") for p in index.list_files(index.TARGET_DIR)]
+    parts = ["FILES IN THE PROJECT:\n" + "\n".join(names)]
+    # The Chunks only say which files matter; the model gets each of those files whole, once.
+    for path in dict.fromkeys(chunk["path"] for chunk in search.search(intent, k)):
+        text = read_text(full_path(path))
+        if text is not None:
+            parts.append(f"{MARKER} {path} ===\n{text}")
+    parts.append("INTENT: " + intent)
+    parts.append(PATCH_RULES)
+    if previous:
+        patch = json.dumps(previous["patch"], indent=2) if previous["patch"] else "no valid Patch"
+        error = last_lines(previous["error"])
+        parts.append(f"YOUR PREVIOUS ATTEMPT FAILED.\nYour previous Patch:\n{patch}\nWhy it failed:\n{error}")
+    return "\n\n".join(parts)
+
+
+def run_attempt(intent, k, previous, number):
+    """One Attempt: generate, parse, Sanity Checks, snapshot, apply, validate. A failed Attempt is rolled back."""
+    attempt = {"number": number, "ok": False, "error": None, "patch": None,
+               "generation": None, "sanity": None, "apply": None, "validation": None}
+    text = ask.call_llm(ask.PATCH_MODEL, build_patch_prompt(intent, k, previous), json_mode=True)
+    patch, reason = parse_patch(text)
+    if reason:
+        attempt["generation"] = {"ok": False, "error": reason}
+        attempt["error"] = reason
+        return attempt
+    attempt["patch"] = patch
+    attempt["generation"] = {"ok": True, "summary": patch["summary"]}
+    reason = check_patch(patch, index.TARGET_DIR)
+    if reason:
+        attempt["sanity"] = {"ok": False, "reason": reason}
+        attempt["error"] = "sanity check refused the patch: " + reason
+        return attempt
+    attempt["sanity"] = {"ok": True, "reason": None}
+    snapshot = take_snapshot([f["path"] for f in patch["files"]])
+    try:
+        attempt["apply"] = {"ok": True, "files": apply_patch(patch)}
+        changed = [f["path"] for f in patch["files"] if f["op"] != "delete"]
+        ok, log = run_validation(changed)
+        attempt["validation"] = {"ok": ok, "log": log}
+        if ok:
+            attempt["ok"] = True
+            return attempt  # the Watcher reindexes the changed files
+        attempt["error"] = "validation failed:\n" + last_lines(log)
+    except Exception as e:
+        attempt["apply"] = {"ok": False, "error": str(e)}
+        attempt["error"] = "could not apply the patch: " + str(e)
+    restore_snapshot(snapshot)  # whatever failed, the next Attempt starts from the original code
+    return attempt
+
+
+def run_patch_loop(intent, k=5, max_attempts=3):
+    """Try up to max_attempts (1 to 3) Attempts, telling the model why the last one failed."""
+    attempts = []
+    previous = None
+    for number in range(1, max(1, min(3, max_attempts)) + 1):
+        attempt = run_attempt(intent, k, previous, number)
+        attempts.append(attempt)
+        if attempt["ok"]:
+            return {"status": "success", "attempts": attempts, "patch": attempt["patch"]}
+        previous = {"patch": attempt["patch"], "error": attempt["error"]}
+    return {"status": "failed", "attempts": attempts, "patch": None}

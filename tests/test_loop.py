@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -8,7 +9,10 @@ from pathlib import Path
 import pytest
 
 from p1 import index
+from p2 import ask
 from p3 import loop
+
+REPO_ROOT = Path(__file__).parent.parent
 
 
 @pytest.fixture
@@ -313,10 +317,12 @@ def test_validation_after_a_rollback_runs_the_restored_code_not_a_stale_pyc(targ
     assert loop.run_validation([])[0] is True  # no .py file to recompile: it must not run an old .pyc
 
 
-def test_validation_leaves_no_pycache_in_the_target_project(target):
+def test_validation_leaves_nothing_behind_in_the_target_project(target):
     make_calc_project(target)
+    before = read_tree(target)
     ok, log = loop.run_validation(["calc.py"])
     assert ok is True
+    assert read_tree(target) == before  # no .pyc files, no .pytest_cache
     assert list(target.glob("**/__pycache__")) == []
 
 
@@ -378,3 +384,279 @@ def test_parse_patch_names_the_file_entry_that_is_wrong(bad_file, expected_reaso
     patch, reason = loop.parse_patch(json.dumps({"summary": "x", "files": [GOOD_FILE, bad_file]}))
     assert patch is None
     assert reason == expected_reason
+
+
+# --- build_patch_prompt ---
+
+
+def test_build_patch_prompt_lists_all_files_and_gives_the_relevant_ones_in_full(client, target):
+    prompt = loop.build_patch_prompt("add a power method to the calculator", 3)
+    for path in ["main.py", "calculator/core.py", "ioc.config.yml"]:
+        assert path in prompt
+    core = (target / "calculator" / "core.py").read_text()
+    assert "=== FILE: calculator/core.py ===\n" + core in prompt
+    assert "add a power method to the calculator" in prompt
+    assert '"files"' in prompt
+
+
+def test_build_patch_prompt_gives_each_relevant_file_only_once(client):
+    prompt = loop.build_patch_prompt("add a power method to the calculator", 5)
+    assert prompt.count("=== FILE: calculator/core.py ===") == 1
+
+
+def test_build_patch_prompt_has_no_failure_section_on_the_first_attempt(client):
+    assert "PREVIOUS ATTEMPT" not in loop.build_patch_prompt("add a power method", 3)
+
+
+def test_build_patch_prompt_shows_the_previous_patch_and_the_last_40_lines_of_the_error(client):
+    error = "\n".join(f"line {i}" for i in range(100))
+    previous = {"patch": {"summary": "my first try", "files": []}, "error": error}
+    prompt = loop.build_patch_prompt("add a power method", 3, previous)
+    assert "my first try" in prompt
+    assert "line 99" in prompt and "line 60" in prompt
+    assert "line 59" not in prompt
+
+
+def test_build_patch_prompt_copes_with_a_previous_attempt_that_had_no_patch(client):
+    previous = {"patch": None, "error": "not valid JSON"}
+    assert "not valid JSON" in loop.build_patch_prompt("add a power method", 3, previous)
+
+
+# --- run_attempt ---
+
+POWER_METHOD = '''
+    def power(self, a, b):
+        """Return a ** b."""
+        return float(a ** b)
+'''
+
+
+def power_reply(target):
+    """The model's JSON answer for "add power": the whole core.py plus a working power method."""
+    core = (target / "calculator" / "core.py").read_text()
+    return json.dumps(make_patch(("calculator/core.py", "modify", core + POWER_METHOD)))
+
+
+def broken_reply(target):
+    """The model's JSON answer that breaks add (it subtracts), so the Target Project's tests fail."""
+    core = (target / "calculator" / "core.py").read_text()
+    return json.dumps(make_patch(("calculator/core.py", "modify", core.replace("a + b", "a - b"))))
+
+
+def test_run_attempt_applies_a_good_patch_and_validates_it(client, target, fake_llm):
+    fake_llm.replies = [power_reply(target)]
+    attempt = loop.run_attempt("add a power method", 3, None, 1)
+    assert attempt["ok"] is True
+    assert attempt["number"] == 1
+    assert attempt["error"] is None
+    assert attempt["generation"]["ok"] is True
+    assert attempt["sanity"]["ok"] is True
+    assert attempt["apply"] == {"ok": True, "files": ["calculator/core.py"]}
+    assert attempt["validation"]["ok"] is True
+    assert attempt["patch"]["files"][0]["path"] == "calculator/core.py"
+    assert "def power" in (target / "calculator" / "core.py").read_text()
+
+
+def test_run_attempt_asks_the_patch_model_for_json(client, target, fake_llm):
+    fake_llm.replies = [power_reply(target)]
+    loop.run_attempt("add a power method", 3, None, 1)
+    model, prompt, json_mode = fake_llm.prompts[0]
+    assert model == ask.PATCH_MODEL
+    assert json_mode is True
+    assert "add a power method" in prompt
+
+
+def test_run_attempt_fails_on_invalid_json_without_going_further(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.replies = ["not json"]
+    attempt = loop.run_attempt("add a power method", 3, None, 1)
+    assert attempt["ok"] is False
+    assert attempt["patch"] is None
+    assert attempt["generation"]["ok"] is False
+    assert "valid JSON" in attempt["error"]
+    assert attempt["sanity"] is None and attempt["apply"] is None and attempt["validation"] is None
+    assert read_tree(target) == before
+
+
+def test_run_attempt_fails_on_a_sanity_refusal_and_writes_nothing(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.replies = [json.dumps(make_patch(("../evil.py", "create", "x = 1\n")))]
+    attempt = loop.run_attempt("add a power method", 3, None, 1)
+    assert attempt["ok"] is False
+    assert attempt["generation"]["ok"] is True
+    assert attempt["sanity"]["ok"] is False
+    assert "outside target project" in attempt["sanity"]["reason"]
+    assert attempt["error"].startswith("sanity check refused the patch: ")
+    assert attempt["apply"] is None and attempt["validation"] is None
+    assert not (target.parent / "evil.py").exists()
+    assert read_tree(target) == before
+
+
+def test_run_attempt_rolls_back_a_patch_that_fails_the_tests(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.replies = [broken_reply(target)]
+    attempt = loop.run_attempt("add a power method", 3, None, 1)
+    assert attempt["ok"] is False
+    assert attempt["apply"]["ok"] is True
+    assert attempt["validation"]["ok"] is False
+    assert attempt["error"].startswith("validation failed:\n")
+    assert "failed" in attempt["error"]
+    assert read_tree(target) == before
+
+
+def test_run_attempt_removes_a_file_the_failed_patch_created(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.replies = [json.dumps(make_patch(("calculator/extra.py", "create", "def broken(:\n")))]
+    attempt = loop.run_attempt("add a power method", 3, None, 1)
+    assert attempt["validation"]["ok"] is False
+    assert "SyntaxError" in attempt["error"]
+    assert not (target / "calculator" / "extra.py").exists()
+    assert read_tree(target) == before
+
+
+def test_run_attempt_rolls_back_a_validation_timeout(client, target, fake_llm, monkeypatch):
+    monkeypatch.setattr(loop, "VALIDATION_TIMEOUT", 0.01)
+    before = read_tree(target)
+    fake_llm.replies = [power_reply(target)]
+    attempt = loop.run_attempt("add a power method", 3, None, 1)
+    assert attempt["ok"] is False
+    assert "timed out" in attempt["error"]
+    assert read_tree(target) == before
+
+
+def test_run_attempt_rolls_back_when_applying_the_patch_raises(client, target, fake_llm):
+    before = read_tree(target)
+    core = (target / "calculator" / "core.py").read_text()
+    # core.py is already written when deleting the missing file raises
+    patch = make_patch(("calculator/core.py", "modify", core + POWER_METHOD), ("nothing.py", "delete", ""))
+    fake_llm.replies = [json.dumps(patch)]
+    attempt = loop.run_attempt("add a power method", 3, None, 1)
+    assert attempt["ok"] is False
+    assert attempt["apply"]["ok"] is False
+    assert attempt["error"].startswith("could not apply the patch: ")
+    assert attempt["validation"] is None
+    assert read_tree(target) == before
+
+
+def test_run_attempt_does_not_swallow_an_unreachable_model(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.error = ask.LLMError("Ollama is not reachable")
+    with pytest.raises(ask.LLMError):
+        loop.run_attempt("add a power method", 3, None, 1)
+    assert read_tree(target) == before
+
+
+# --- run_patch_loop ---
+
+
+def test_run_patch_loop_succeeds_on_the_first_attempt(client, target, fake_llm):
+    fake_llm.replies = [power_reply(target)]
+    result = loop.run_patch_loop("add a power method")
+    assert result["status"] == "success"
+    assert len(result["attempts"]) == 1
+    assert result["patch"]["files"][0]["path"] == "calculator/core.py"
+    assert len(fake_llm.prompts) == 1
+
+
+def test_run_patch_loop_tells_the_model_why_the_first_attempt_failed(client, target, fake_llm):
+    fake_llm.replies = [broken_reply(target), power_reply(target)]
+    result = loop.run_patch_loop("add a power method")
+    assert result["status"] == "success"
+    assert [a["ok"] for a in result["attempts"]] == [False, True]
+    second_prompt = fake_llm.prompts[1][1]
+    assert "YOUR PREVIOUS ATTEMPT FAILED" in second_prompt
+    assert "FAILED tests/test_core.py" in second_prompt  # the end of the pytest log
+    assert "a - b" in second_prompt  # the previous Patch is shown too
+
+
+def test_run_patch_loop_leaves_the_target_project_untouched_after_three_failures(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.replies = [broken_reply(target)] * 3
+    result = loop.run_patch_loop("add a power method")
+    assert result["status"] == "failed"
+    assert len(result["attempts"]) == 3
+    assert result["patch"] is None
+    assert read_tree(target) == before
+
+
+def test_run_patch_loop_survives_three_different_kinds_of_failure(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.replies = [
+        "not json",
+        json.dumps(make_patch(("ioc.config.yml", "modify", "validate: echo ok\n"))),
+        json.dumps(make_patch(("calculator/stub.py", "create", "def power(a, b):\n    pass\n"))),
+    ]
+    result = loop.run_patch_loop("add a power method")
+    assert result["status"] == "failed"
+    errors = [a["error"] for a in result["attempts"]]
+    assert "valid JSON" in errors[0]
+    assert "ioc.config.yml" in errors[1]
+    assert "stub function power" in errors[2]
+    assert read_tree(target) == before
+
+
+def test_run_patch_loop_never_runs_more_than_three_attempts(client, target, fake_llm):
+    fake_llm.replies = ["not json"] * 4
+    result = loop.run_patch_loop("add a power method", max_attempts=10)
+    assert len(result["attempts"]) == 3
+    assert len(fake_llm.replies) == 1  # the fourth reply was never asked for
+
+
+def test_run_patch_loop_runs_at_least_one_attempt(client, target, fake_llm):
+    fake_llm.replies = ["not json"]
+    result = loop.run_patch_loop("add a power method", max_attempts=0)
+    assert len(result["attempts"]) == 1
+
+
+# --- POST /patch ---
+
+
+def test_post_patch_applies_a_good_patch(client, target, fake_llm):
+    fake_llm.replies = [power_reply(target)]
+    response = client.post("/patch", json={"intent": "add power"})
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"status", "attempts", "patch"}
+    assert body["status"] == "success"
+    assert body["patch"] is not None
+    assert body["attempts"][0]["validation"]["ok"] is True
+    assert "def power" in (target / "calculator" / "core.py").read_text()
+
+
+def test_post_patch_rolls_back_after_three_failed_attempts(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.replies = [broken_reply(target)] * 3
+    response = client.post("/patch", json={"intent": "add power"})  # max_attempts defaults to 3
+    body = response.json()
+    assert response.status_code == 200
+    assert body["status"] == "failed"
+    assert len(body["attempts"]) == 3
+    assert [a["validation"]["ok"] for a in body["attempts"]] == [False, False, False]
+    assert body["patch"] is None
+    assert read_tree(target) == before
+
+
+def test_post_patch_takes_k_and_max_attempts(client, target, fake_llm):
+    fake_llm.replies = ["not json", "not json"]
+    body = client.post("/patch", json={"intent": "add power", "k": 2, "max_attempts": 1}).json()
+    assert len(body["attempts"]) == 1
+
+
+def test_post_patch_without_an_intent_is_a_422(client):
+    assert client.post("/patch", json={}).status_code == 422
+
+
+def test_post_patch_with_ollama_down_is_a_503(client, target, fake_llm):
+    before = read_tree(target)
+    fake_llm.error = ask.LLMError("Ollama is not reachable at http://ollama:11434")
+    response = client.post("/patch", json={"intent": "add power"})
+    assert response.status_code == 503
+    assert "Ollama is not reachable" in response.json()["detail"]
+    assert read_tree(target) == before
+
+
+def test_the_part_2_app_alone_has_no_patch_route():
+    code = "from p2.app import app; print([route.path for route in app.routes])"
+    result = subprocess.run([sys.executable, "-c", code], cwd=REPO_ROOT, capture_output=True, text=True)
+    assert "/status" in result.stdout
+    assert "/patch" not in result.stdout
