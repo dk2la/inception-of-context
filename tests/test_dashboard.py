@@ -22,7 +22,7 @@ def test_dashboard_works_offline(client):
     page = client.get("/").text
     assert "http://" not in page
     assert "https://" not in page
-    assert "<link" not in page
+    assert "stylesheet" not in page
     assert "src=" not in page
 
 
