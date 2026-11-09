@@ -22,6 +22,9 @@
   .card { min-width: 150px; padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; }
   .card small { display: block; color: #666; }
   .card strong { overflow-wrap: anywhere; }
+  #file-counts th:last-child, #file-counts td:last-child { text-align: right; }
+  #file-counts .total { font-weight: bold; }
+  .changed { background: #fff3b0; }
 </style>
 </head>
 <body>
@@ -39,6 +42,12 @@
 <section class="tab" id="tab-overview">
   <h2>Overview</h2>
   <div id="status-cards"></div>
+
+  <h3>Chunks per file</h3>
+  <table id="file-counts">
+    <thead><tr><th>File</th><th>Chunks</th></tr></thead>
+    <tbody></tbody>
+  </table>
 </section>
 
 <section class="tab" id="tab-files" hidden>
@@ -132,13 +141,55 @@ async function loadStatus() {
   }
 }
 
+// Builds a table row from a list of cell texts.
+function row(texts, className = "") {
+  const tr = el("tr", "", className);
+  for (const text of texts) tr.append(el("td", text));
+  return tr;
+}
+
+let lastCounts = null; // path -> Chunk count at the previous refresh; null before the first one
+
+// Fills the "Chunks per file" table from GET /files. A row whose count changed since the last refresh is highlighted.
+async function loadFiles() {
+  try {
+    const files = await api("/files");
+    const tbody = document.querySelector("#file-counts tbody");
+    tbody.replaceChildren();
+    const counts = {};
+    let total = 0;
+    for (const file of files) {
+      const changed = lastCounts !== null && lastCounts[file.path] !== file.chunks;
+      tbody.append(row([file.path, file.chunks], changed ? "changed" : ""));
+      counts[file.path] = file.chunks;
+      total += file.chunks;
+    }
+    if (files.length === 0) {
+      const empty = row(["The Index is empty."]);
+      empty.firstChild.colSpan = 2;
+      tbody.append(empty);
+    } else {
+      tbody.append(row(["Total", total], "total"));
+    }
+    lastCounts = counts;
+    setError("files", "");
+  } catch (e) {
+    setError("files", "Cannot load the file list: " + e.message);
+  }
+}
+
+function refreshOverview() {
+  loadStatus();
+  loadFiles();
+}
+
 // ---------- Start ----------
 
 for (const button of document.querySelectorAll("nav button")) {
   button.onclick = () => showTab(button.dataset.tab);
 }
-loadStatus();
-setInterval(loadStatus, 3000);
+refreshOverview();
+setInterval(refreshOverview, 3000);
 const firstTab = location.hash.slice(1);
 showTab(document.getElementById("tab-" + firstTab) ? firstTab : "overview");
 </script>
