@@ -35,6 +35,8 @@
   #file-content { max-height: 70vh; overflow: auto; padding: 0; font-family: monospace; }
   .line { width: max-content; min-width: 100%; }
   .number { display: inline-block; width: 3em; margin-right: 1em; text-align: right; color: #999; user-select: none; }
+  #chunks-range { margin: 0 8px; }
+  #chunk-table summary { cursor: pointer; font-family: monospace; white-space: pre; }
 </style>
 </head>
 <body>
@@ -76,6 +78,18 @@
 
 <section class="tab" id="tab-explorer" hidden>
   <h2>ChromaDB Explorer</h2>
+  <p>
+    <label>Chunks per page
+      <select id="chunk-limit"><option>10</option><option selected>25</option><option>50</option></select>
+    </label>
+    <button id="chunks-prev">Previous</button>
+    <span id="chunks-range"></span>
+    <button id="chunks-next">Next</button>
+  </p>
+  <table id="chunk-table">
+    <thead><tr><th>Id</th><th>File</th><th>Lines</th><th>Name</th><th>Kind</th><th>Text</th></tr></thead>
+    <tbody></tbody>
+  </table>
 </section>
 
 <section class="tab" id="tab-ask" hidden>
@@ -121,7 +135,7 @@ function setError(name, message) {
 // ---------- Tabs ----------
 
 // Tab name -> function to run each time the tab is shown.
-const tabLoaders = {files: loadFileList};
+const tabLoaders = {files: loadFileList, explorer: loadChunks};
 
 function showTab(name) {
   for (const section of document.querySelectorAll(".tab")) {
@@ -284,11 +298,73 @@ function highlightChunk(chunk) {
   lines[chunk.start_line - 1]?.scrollIntoView({block: "center"});
 }
 
+// ---------- ChromaDB Explorer ----------
+
+let chunkOffset = 0; // how many Chunks the current page skips
+
+function chunkLimit() {
+  return Number(document.getElementById("chunk-limit").value);
+}
+
+// The first line of a text, cut to 80 characters, followed by "…" when something was left out.
+function firstLine(text) {
+  const line = text.split("\n")[0].slice(0, 80);
+  return line === text ? line : line + " …";
+}
+
+// One table row for a Chunk. The full text sits in a <details> box that opens on click.
+function chunkRow(chunk) {
+  const id = el("td", chunk.id.slice(0, 8));
+  id.title = chunk.id; // the full id appears as a tooltip
+  const details = el("details");
+  details.append(el("summary", firstLine(chunk.text)), el("pre", chunk.text));
+  const text = el("td");
+  text.append(details);
+  const tr = el("tr");
+  tr.append(id, el("td", chunk.path), el("td", `${chunk.start_line}–${chunk.end_line}`), el("td", chunk.name), el("td", chunk.kind), text);
+  return tr;
+}
+
+// Shows the page of Chunks that starts at chunkOffset (GET /chunks).
+async function loadChunks() {
+  const limit = chunkLimit();
+  try {
+    const page = await api(`/chunks?offset=${chunkOffset}&limit=${limit}`);
+    if (page.items.length === 0 && chunkOffset > 0) { // the Index shrank: start again from the first page
+      chunkOffset = 0;
+      return loadChunks();
+    }
+    const tbody = document.querySelector("#chunk-table tbody");
+    tbody.replaceChildren();
+    for (const chunk of page.items) tbody.append(chunkRow(chunk));
+    const first = chunkOffset + 1;
+    const last = chunkOffset + page.items.length;
+    document.getElementById("chunks-range").textContent = page.total === 0 ? "The Index is empty" : `Chunks ${first}–${last} of ${page.total}`;
+    document.getElementById("chunks-prev").disabled = chunkOffset === 0;
+    document.getElementById("chunks-next").disabled = chunkOffset + limit >= page.total;
+    setError("chunks", "");
+  } catch (e) {
+    setError("chunks", "Cannot load Chunks: " + e.message);
+  }
+}
+
 // ---------- Start ----------
 
 for (const button of document.querySelectorAll("nav button")) {
   button.onclick = () => showTab(button.dataset.tab);
 }
+document.getElementById("chunks-prev").onclick = () => {
+  chunkOffset = Math.max(0, chunkOffset - chunkLimit());
+  loadChunks();
+};
+document.getElementById("chunks-next").onclick = () => {
+  chunkOffset += chunkLimit();
+  loadChunks();
+};
+document.getElementById("chunk-limit").onchange = () => {
+  chunkOffset = 0;
+  loadChunks();
+};
 refreshOverview();
 setInterval(refreshOverview, 3000);
 startActivityFeed();
