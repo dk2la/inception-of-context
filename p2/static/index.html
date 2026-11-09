@@ -40,6 +40,7 @@
   textarea { width: 100%; box-sizing: border-box; font: inherit; }
   .muted { color: #666; }
   .fail { color: #b00020; }
+  #answer-text { margin: 4px 0 12px; white-space: pre-wrap; }
   .source { margin: 8px 0; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
   .source-title { font-weight: bold; }
 </style>
@@ -105,8 +106,13 @@
       <select id="ask-k"><option>3</option><option selected>5</option><option>8</option><option>10</option></select>
     </label>
     <button id="retrieve-button">Retrieve</button>
+    <button id="ask-button">Ask</button>
   </p>
   <div id="ask-message"></div>
+  <div id="answer" hidden>
+    <div id="answer-label" class="muted"></div>
+    <div id="answer-text"></div>
+  </div>
   <div id="results"></div>
 </section>
 
@@ -176,10 +182,13 @@ function showTab(name) {
 
 // ---------- Overview ----------
 
+let answerModel = "the local model"; // the name shown under an answer; replaced by the real one from /status
+
 // Draws one card per value of GET /status.
 async function loadStatus() {
   try {
     const s = await api("/status");
+    if (s.answer_model) answerModel = s.answer_model;
     const cards = [
       ["Chunks", s.chunks],
       ["Target Project", s.target_dir],
@@ -407,6 +416,7 @@ function setAskBusy(busy) {
 }
 
 function clearAskResults() {
+  document.getElementById("answer").hidden = true;
   document.getElementById("results").replaceChildren();
 }
 
@@ -431,12 +441,37 @@ async function retrieve() {
   }
 }
 
+// Ask button: send the text as a Question to POST /ask; show the answer, how it was made, and its sources.
+async function ask() {
+  const question = document.getElementById("query").value.trim();
+  if (question === "") {
+    showMessage("ask-message", "Type a question first.", true);
+    return;
+  }
+  clearAskResults();
+  setAskBusy(true);
+  showMessage("ask-message", "Thinking… the local model can take up to a minute on CPU.");
+  try {
+    const data = await post("/ask", {question, k: askK()});
+    document.getElementById("answer-text").textContent = data.answer;
+    document.getElementById("answer-label").textContent = data.used_llm ? "Answered by " + answerModel : "Answered from the Index (no LLM)";
+    document.getElementById("answer").hidden = false;
+    renderSources(document.getElementById("results"), data.sources);
+    showMessage("ask-message", "");
+  } catch (e) {
+    showMessage("ask-message", "Request failed: " + e.message, true); // a 503 says that Ollama is not reachable
+  } finally {
+    setAskBusy(false);
+  }
+}
+
 // ---------- Start ----------
 
 for (const button of document.querySelectorAll("nav button")) {
   button.onclick = () => showTab(button.dataset.tab);
 }
 document.getElementById("retrieve-button").onclick = retrieve;
+document.getElementById("ask-button").onclick = ask;
 document.getElementById("chunks-prev").onclick = () => {
   chunkOffset = Math.max(0, chunkOffset - chunkLimit());
   loadChunks();
