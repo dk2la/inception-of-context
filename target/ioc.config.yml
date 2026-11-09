@@ -1,0 +1,3 @@
+# How Inception-of-Context decides that this project still works after a Patch.
+# {files} is replaced with the .py files the Patch changed.
+validate: python -m py_compile {files} && python -m pytest -q
