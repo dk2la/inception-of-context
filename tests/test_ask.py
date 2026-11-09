@@ -1,5 +1,7 @@
 import os
 
+import pytest
+
 from p1.index import reindex_file
 from p2 import ask
 
@@ -205,3 +207,54 @@ def test_symbols_in_file_shows_both_files_that_share_a_short_name(temp_index):
     index_files(temp_index, {"a/utils.py": "def one():\n    pass\n", "b/utils.py": "def two():\n    pass\n"})
     found = ask.symbols_in_file("utils.py")
     assert [(c["path"], c["name"]) for c in found] == [("a/utils.py", "one"), ("b/utils.py", "two")]
+
+
+# --- ask: a free Question goes through the model ---
+
+
+def test_ask_returns_the_models_answer_without_surrounding_whitespace(client, fake_llm):
+    fake_llm.replies = ["  Division is in Calculator.divide.  "]
+    result = ask.ask("How does division work?")
+    assert result["answer"] == "Division is in Calculator.divide."
+    assert result["used_llm"] is True
+
+
+def test_ask_uses_the_answer_model_in_plain_text_mode(client, fake_llm):
+    fake_llm.replies = ["ok"]
+    ask.ask("How does division work?")
+    model, _, json_mode = fake_llm.prompts[0]
+    assert model == ask.ANSWER_MODEL
+    assert json_mode is False
+
+
+def test_ask_prompt_has_the_question_the_symbols_and_the_code(client, fake_llm):
+    fake_llm.replies = ["ok"]
+    ask.ask("How does division work?")
+    prompt = fake_llm.prompts[0][1]
+    assert "How does division work?" in prompt
+    assert "KNOWN SYMBOLS:" in prompt
+    assert "calculator/core.py: Calculator.divide (method)" in prompt
+    assert "def divide" in prompt
+
+
+def test_ask_sources_are_the_chunks_given_to_the_model(client, fake_llm):
+    fake_llm.replies = ["ok"]
+    result = ask.ask("How does division work?", k=2)
+    assert len(result["sources"]) == 2
+    for source in result["sources"]:
+        assert source["text"] in fake_llm.prompts[0][1]
+        assert "path" in source
+
+
+def test_ask_does_not_call_the_model_when_nothing_is_indexed(temp_index, fake_llm):
+    result = ask.ask("How does division work?")
+    assert result["used_llm"] is False
+    assert result["sources"] == []
+    assert "Index is empty" in result["answer"]
+    assert fake_llm.prompts == []
+
+
+def test_ask_lets_a_model_error_through(client, fake_llm):
+    fake_llm.error = ask.LLMError("Ollama is not reachable")
+    with pytest.raises(ask.LLMError):
+        ask.ask("How does division work?")
