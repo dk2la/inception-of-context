@@ -146,15 +146,29 @@ def watch(root=None):
 
 
 def main():
-    """Console command: python -m p1.index [dir]"""
+    """Console command: python -m p1.index [dir] [--watch]"""
     global TARGET_DIR
     parser = argparse.ArgumentParser(description="Index the Target Project once.")
     parser.add_argument("dir", nargs="?", help="the folder to index (default: TARGET_DIR)")
+    parser.add_argument("--watch", action="store_true", help="keep running and reindex files as they change")
     args = parser.parse_args()
     if args.dir:
-        TARGET_DIR = os.path.abspath(args.dir)
+        TARGET_DIR = os.path.realpath(args.dir)
     chunks = index_all(TARGET_DIR)
     print(f"indexed {chunks} chunks from {len(list_files(TARGET_DIR))} files")
+    if args.watch:
+        observer = watch(TARGET_DIR)
+        printed = 0  # how many events were shown already
+        try:
+            while True:
+                while printed < len(EVENTS):
+                    event = EVENTS[printed]
+                    print(f'{event["type"]} {event["path"]} ({event["chunks"]} chunks)')
+                    printed += 1
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            observer.stop()
+        observer.join()
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 
 import pytest
@@ -238,3 +239,52 @@ def test_without_watch_polling_one_the_normal_observer_is_used(temp_index, monke
     finally:
         observer.stop()
         observer.join()
+
+
+# --- python -m p1.index --watch ---
+
+
+def test_console_command_with_watch_prints_each_event_once_and_stops_on_ctrl_c(temp_index, monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    write(temp_index, "a.py", "def a():\n    pass\n")
+    monkeypatch.setattr(index, "EVENTS", [])
+    monkeypatch.setattr(sys, "argv", ["p1.index", temp_index, "--watch"])
+    observer = SimpleNamespace(stopped=False, joined=False)
+    observer.stop = lambda: setattr(observer, "stopped", True)
+    observer.join = lambda: setattr(observer, "joined", True)
+    monkeypatch.setattr(index, "watch", lambda root=None: observer)
+    sleeps = []
+
+    def fake_sleep(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) == 1:  # the Watcher "does" two things while main() sleeps
+            index.add_event("indexed", "a.py", 1)
+            index.add_event("deleted", "b.md", 0)
+        elif len(sleeps) == 2:  # nothing new: nothing may be printed again
+            pass
+        else:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(time, "sleep", fake_sleep)
+    index.main()
+    lines = capsys.readouterr().out.splitlines()
+    assert lines == ["indexed 1 chunks from 1 files", "indexed a.py (1 chunks)", "deleted b.md (0 chunks)"]
+    assert observer.stopped and observer.joined
+
+
+def test_console_command_without_watch_does_not_start_the_watcher(temp_index, monkeypatch, capsys):
+    write(temp_index, "a.py", "def a():\n    pass\n")
+    monkeypatch.setattr(sys, "argv", ["p1.index", temp_index])
+    monkeypatch.setattr(index, "watch", lambda root=None: pytest.fail("the Watcher must not start"))
+    index.main()
+    assert capsys.readouterr().out == "indexed 1 chunks from 1 files\n"
+
+
+def test_console_command_follows_a_symlinked_folder_so_watcher_paths_match(temp_index, tmp_path, monkeypatch):
+    """On macOS /tmp is a symlink, and the Watcher reports the real path."""
+    link = tmp_path / "link"
+    link.symlink_to(temp_index)
+    monkeypatch.setattr(sys, "argv", ["p1.index", str(link)])
+    index.main()
+    assert index.TARGET_DIR == os.path.realpath(temp_index)
