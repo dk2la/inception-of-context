@@ -105,3 +105,50 @@ def test_file_that_is_skipped_or_binary_or_a_folder_is_404(client, temp_index):
 
 def test_file_without_a_path_parameter_is_422(client):
     assert client.get("/file").status_code == 422
+
+
+# --- GET /chunks ---
+
+
+def test_chunks_first_page_has_the_documented_shape(client):
+    body = client.get("/chunks").json()
+    assert (body["offset"], body["limit"]) == (0, 50)
+    assert body["total"] == index.get_collection().count()
+    assert len(body["items"]) == min(50, body["total"])
+    for item in body["items"]:
+        assert set(item) == {"id", "path", "start_line", "end_line", "name", "kind", "text"}
+
+
+def test_chunk_items_hold_the_stored_text_and_metadata(client):
+    items = client.get("/chunks", params={"limit": 200}).json()["items"]
+    add = [item for item in items if item["name"] == "Calculator.add"][0]
+    assert add["path"] == "calculator/core.py"
+    assert add["kind"] == "method"
+    assert "def add" in add["text"]
+    assert len(add["id"]) == 64
+
+
+def test_chunk_pages_do_not_overlap(client):
+    first = client.get("/chunks", params={"offset": 0, "limit": 2}).json()["items"]
+    second = client.get("/chunks", params={"offset": 2, "limit": 2}).json()["items"]
+    assert len(first) == 2 and len(second) == 2
+    assert not {item["id"] for item in first} & {item["id"] for item in second}
+
+
+def test_walking_all_pages_returns_every_chunk_once(client):
+    total = client.get("/chunks").json()["total"]
+    ids = []
+    for offset in range(0, total, 5):
+        ids += [item["id"] for item in client.get("/chunks", params={"offset": offset, "limit": 5}).json()["items"]]
+    assert len(ids) == total and len(set(ids)) == total
+
+
+def test_chunks_offset_past_the_end_is_an_empty_page(client):
+    body = client.get("/chunks", params={"offset": 10000}).json()
+    assert body["items"] == []
+    assert body["total"] > 0
+
+
+def test_chunks_rejects_silly_values(client):
+    for params in [{"limit": 0}, {"offset": -1}, {"limit": 201}, {"limit": "many"}]:
+        assert client.get("/chunks", params=params).status_code == 422, params
