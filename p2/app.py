@@ -1,9 +1,12 @@
 """FastAPI routes and the dashboard for Part 2."""
 import contextlib
+import json
 import os
 import threading
+import time
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from p1 import index
 from p2 import ask
@@ -91,3 +94,26 @@ def chunks(offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):
             "text": found["documents"][i],
         })
     return {"total": collection.count(), "offset": offset, "limit": limit, "items": items}
+
+
+def format_event(event):
+    """One Server-Sent Events message: a "data:" line and an empty line."""
+    return "data: " + json.dumps(event) + "\n\n"
+
+
+def event_stream():
+    """Send the Watcher events: first those so far, then each new one, checking twice a second."""
+    sent = 0  # how many events this connection has received
+    while True:
+        while sent < len(index.EVENTS):
+            yield format_event(index.EVENTS[sent])
+            sent += 1
+        # A comment line: the browser ignores it, but yielding lets the server notice a closed connection.
+        # Without it this loop would never return and would keep a server thread busy after the browser left.
+        yield ": waiting\n\n"
+        time.sleep(0.5)
+
+
+@app.get("/events")
+def events():
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
