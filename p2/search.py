@@ -48,3 +48,12 @@ def bm25_search(query):
     scores = _bm25.get_scores(tokenize(query))
     ranked = sorted(zip(_bm25_ids, scores), key=lambda pair: pair[1], reverse=True)
     return [chunk_id for chunk_id, _ in ranked]
+
+
+def rrf_merge(ranked_a, ranked_b, k=60):
+    """Reciprocal Rank Fusion: add 1 / (k + rank) for every list an id appears in. Return {id: score}."""
+    scores = {}
+    for ranked in (ranked_a, ranked_b):
+        for rank, chunk_id in enumerate(ranked, start=1):
+            scores[chunk_id] = scores.get(chunk_id, 0) + 1 / (k + rank)
+    return scores
