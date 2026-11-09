@@ -1,0 +1,99 @@
+import os
+import shutil
+
+import pytest
+
+from p3 import sanity
+from p3.sanity import check_patch
+
+
+# --- helpers ---
+
+def listing(folder):
+    """Every file under folder, with its bytes, so a test can prove nothing was written."""
+    found = {}
+    for root, _, names in os.walk(folder):
+        for name in names:
+            path = os.path.join(root, name)
+            with open(path, "rb") as f:
+                found[path] = f.read()
+    return found
+
+
+@pytest.fixture
+def project(tmp_path, real_target):
+    """A temporary copy of the real Target Project, inside a folder that holds nothing else."""
+    folder = tmp_path / "work" / "target"
+    shutil.copytree(real_target, folder, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+    return str(folder)
+
+
+@pytest.fixture
+def run(project):
+    """run(patch) -> the Sanity Check reason or None, and proves that nothing under work/ was written."""
+    def run(patch):
+        work = os.path.dirname(project)
+        before = listing(work)
+        reason = check_patch(patch, project)
+        assert listing(work) == before
+        return reason
+    return run
+
+
+def patch_of(*files):
+    return {"summary": "test", "files": list(files)}
+
+
+def modify(path, content="x = 1\n"):
+    return {"path": path, "op": "modify", "content": content}
+
+
+def create(path, content="x = 1\n"):
+    return {"path": path, "op": "create", "content": content}
+
+
+def delete(path):
+    return {"path": path, "op": "delete"}
+
+
+# --- the runner and outside_target (#92) ---
+
+def test_a_normal_patch_is_allowed(run):
+    assert run(patch_of(create("calculator/power.py", "def power(a, b):\n    return a ** b\n"))) is None
+
+
+def test_the_runner_returns_the_first_reason_and_stops_there(run, monkeypatch):
+    calls = []
+
+    def rule(answer):
+        def the_rule(patch, target_dir):
+            calls.append(answer)
+            return answer
+        return the_rule
+
+    monkeypatch.setattr(sanity, "RULES", [rule(None), rule("second"), rule("third")])
+    assert run(patch_of(create("a.py"))) == "second"
+    assert calls == [None, "second"]
+
+
+@pytest.mark.parametrize("path", [
+    "/etc/passwd",              # absolute
+    "../x.py",                  # climbs out
+    "calculator/../../x.py",    # starts inside, climbs out
+    "./../x.py",                # looks inside, resolves outside
+    "..\\x.py",                 # Windows-style separators
+    "calculator\\..\\..\\x.py",
+    "\\etc\\passwd",            # Windows-style absolute
+    "..",
+])
+def test_a_path_outside_the_target_project_is_refused_and_named(run, path):
+    assert path in run(patch_of(create(path)))
+
+
+def test_one_bad_path_among_good_ones_is_enough(run):
+    reason = run(patch_of(create("a.py"), create("../x.py")))
+    assert "../x.py" in reason
+
+
+def test_a_path_that_only_contains_dots_in_a_name_is_allowed(run):
+    assert run(patch_of(create("calculator/v1..2.py"), create("...py"))) is None
