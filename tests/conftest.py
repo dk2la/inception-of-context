@@ -41,3 +41,23 @@ def client(temp_index):
                     ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
     index.index_all()
     return TestClient(app)
+
+
+@pytest.fixture
+def fake_llm(monkeypatch):
+    """Replace the model with scripted replies: set fake_llm.replies; read fake_llm.prompts afterwards."""
+    from types import SimpleNamespace
+
+    from p2 import ask
+
+    fake = SimpleNamespace(replies=[], prompts=[], error=None)
+
+    def call_llm(model, prompt, json_mode=False):
+        fake.prompts.append((model, prompt, json_mode))
+        if fake.error:
+            raise fake.error
+        assert fake.replies, f"fake_llm: no reply left for prompt: {prompt[:200]}"
+        return fake.replies.pop(0)
+
+    monkeypatch.setattr(ask, "call_llm", call_llm)
+    return fake
