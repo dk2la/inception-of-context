@@ -1,12 +1,15 @@
 """The Patch Loop: the small steps it is built from (config, validate, snapshot, apply, parse)."""
 import os
 import shlex
+import signal
 import subprocess
 import sys
 
 import yaml
 
 from p1 import index
+
+VALIDATION_TIMEOUT = 60  # seconds
 
 
 def load_validation_command():
@@ -31,7 +34,9 @@ def run_validation(changed_files):
     command = load_validation_command().replace("{files}", files_text)
     # "python" in the command must be the interpreter that runs this server, even if it is not on PATH
     path = os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", "")
-    result = subprocess.run(
+    # Popen, not run: with shell=True, run() on timeout kills only the shell, and pytest keeps running.
+    # start_new_session puts the shell and its children in one process group that we can kill together.
+    proc = subprocess.Popen(
         command,
         shell=True,
         cwd=index.TARGET_DIR,
@@ -40,5 +45,12 @@ def run_validation(changed_files):
         stdin=subprocess.DEVNULL,
         text=True,
         env=dict(os.environ, PATH=path),
+        start_new_session=True,
     )
-    return result.returncode == 0, result.stdout
+    try:
+        log, _ = proc.communicate(timeout=VALIDATION_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.communicate()
+        return False, f"validation timed out after {VALIDATION_TIMEOUT} seconds"
+    return proc.returncode == 0, log
