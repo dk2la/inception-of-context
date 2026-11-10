@@ -186,6 +186,23 @@ def test_restore_snapshot_deletes_a_file_the_patch_created(target):
     assert not (target / "new.py").exists()
 
 
+def test_restore_snapshot_removes_the_folders_made_for_a_created_file(target):
+    snapshot = loop.take_snapshot(["pkg/sub/new.py"])
+    (target / "pkg" / "sub").mkdir(parents=True)
+    (target / "pkg" / "sub" / "new.py").write_bytes(b"x = 1\n")
+    loop.restore_snapshot(snapshot)
+    assert not (target / "pkg").exists()
+
+
+def test_restore_snapshot_keeps_a_folder_that_still_has_files(target):
+    (target / "pkg").mkdir()
+    (target / "pkg" / "old.py").write_bytes(b"y = 2\n")
+    snapshot = loop.take_snapshot(["pkg/new.py"])
+    (target / "pkg" / "new.py").write_bytes(b"x = 1\n")
+    loop.restore_snapshot(snapshot)
+    assert (target / "pkg" / "old.py").exists() and not (target / "pkg" / "new.py").exists()
+
+
 def test_restore_snapshot_puts_back_a_deleted_file_and_its_folder(target):
     (target / "pkg").mkdir()
     (target / "pkg" / "b.py").write_bytes(b"y = 2\n")
