@@ -167,7 +167,7 @@ def last_lines(text, count=40):
 
 def build_patch_prompt(intent, k, previous=None):
     """The text for one Attempt. previous is None, or {"patch": the last Patch or None, "error": why it failed}."""
-    names = [os.path.relpath(p, index.TARGET_DIR).replace(os.sep, "/") for p in index.list_files(index.TARGET_DIR)]
+    names = [index.relative_path(p) for p in index.list_files(index.TARGET_DIR)]
     parts = ["FILES IN THE PROJECT:\n" + "\n".join(names)]
     # The Chunks only say which files matter; the model gets each of those files whole, once.
     for path in dict.fromkeys(chunk["path"] for chunk in search.search(intent, k)):
