@@ -81,7 +81,7 @@ def reindex_file(full_path):
         )
     if moved:
         collection.update(ids=moved, metadatas=[metadata_of(new[i]) for i in moved])
-    if to_delete or to_add or moved:
+    if to_delete or to_add:  # the keyword index holds only the texts, so moved Chunks do not change it
         INDEX_VERSION += 1
     return len(new)
 
