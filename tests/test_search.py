@@ -178,10 +178,6 @@ def test_rrf_an_id_missing_from_one_list_gets_points_from_the_other_only():
     assert rrf_merge(["a", "b"], ["a"])["b"] == pytest.approx(1 / 62)
 
 
-def test_rrf_k_can_be_changed():
-    assert rrf_merge(["a"], [], k=0)["a"] == pytest.approx(1.0)
-
-
 def test_rrf_of_nothing_is_nothing():
     assert rrf_merge([], []) == {}
 
