@@ -8,7 +8,7 @@ from p3 import loop
 class PatchRequest(BaseModel):
     intent: str
     k: int = 5
-    max_attempts: int = 3
+    max_attempts: int = loop.MAX_ATTEMPTS
 
 
 @app.post("/patch")

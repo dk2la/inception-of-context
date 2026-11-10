@@ -292,3 +292,12 @@ def test_moved_chunks_keep_their_ids_but_get_new_line_numbers(temp_index):
     found = get_collection().get(where={"name": "a"}, include=["metadatas"])
     assert [m["start_line"] for m in found["metadatas"]] == [4]
     assert before <= ids_of("m.py")
+
+
+def test_moved_chunks_do_not_change_the_index_version(temp_index):
+    path = write(temp_index, "m.py", "def a():\n    return 1\n")
+    reindex_file(path)
+    version = index.INDEX_VERSION
+    write(temp_index, "m.py", "\n\ndef a():\n    return 1\n")  # a() moved down, nothing else changed
+    reindex_file(path)
+    assert index.INDEX_VERSION == version

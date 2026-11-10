@@ -16,13 +16,14 @@ Guiding rule: the code is as short and plain as possible, so anyone who has writ
 ## Repository layout
 
 ```
-Makefile  README.md  Dockerfile  docker-compose.yml  requirements.txt  .gitignore  GLOSSARY.md
+Makefile  README.md  Dockerfile  .dockerignore  docker-compose.yml  requirements.txt  .gitignore  GLOSSARY.md
 
 target/                      Target Project (calculator), mounted as /workspace
   calculator/core.py         class Calculator: add, subtract, multiply, divide (floats)
   calculator/cli.py          parses "2 + 3"; division by zero → "error: division by zero", exit 1
   main.py                    python main.py 2 + 3  →  5
   tests/test_core.py         pytest
+  tests/test_cli.py
   ioc.config.yml             validate: python -m py_compile {files} && python -m pytest -q
   README.md
 
@@ -63,8 +64,8 @@ The **Index** lives in `/data/chroma`, outside the **Target Project**, so the **
 - Each **Chunk** stores: path, start/end line, symbol name, symbol kind, content hash.
 
 **Incremental reindex** (`reindex_file(path)`, roughly ten lines):
-- **Chunk** id = `sha256(path + chunk text)`.
-- Read the file's current ids from the **Index**, compute the new ids, delete the ones that disappeared, add the new ones, and leave matching ids alone.
+- **Chunk** id = `sha256(path + "\n" + chunk text)`. Two **Chunks** with the same text in one file share one id and are stored once.
+- Read the file's current ids from the **Index**, compute the new ids, delete the ones that disappeared, add the new ones, and leave matching ids alone. A **Chunk** whose text is unchanged but whose lines moved keeps its id; only its line numbers are updated.
 - If the file no longer exists, delete all its **Chunks**.
 
 **Skipped paths**: `node_modules`, `.git`, `dist`, `build`, `venv`, `.venv`, `__pycache__`, hidden directories, binary files, and `*.ioc.tmp`.
@@ -82,10 +83,12 @@ The **Index** lives in `/data/chroma`, outside the **Target Project**, so the **
 | `GET /status` | **Chunk** count, target path, Chroma path, both model names, Ollama URL |
 | `GET /files` | files with their **Chunk** counts |
 | `GET /file?path=` | file content plus **Chunk** boundaries |
-| `GET /chunks?offset=&limit=` | paginated **Chunks** |
+| `GET /chunks?offset=&limit=` | paginated **Chunks** (`limit` at most 200) |
 | `POST /context {query, k}` | top-k **Chunks** with vector similarity and final score |
 | `POST /ask {question, k}` | answer plus the **Chunks** used as sources |
 | `GET /events` | Server-Sent Events: every half second, sends events added to the list since the last send |
+
+A route that needs the model answers `503` with the reason when Ollama cannot be reached.
 
 **Retrieval** (`p2/search.py`): rank the whole **Index** twice (vector similarity from Chroma and BM25 over the Chroma documents), then merge with Reciprocal Rank Fusion: `score = 1/(60 + vector_rank) + 1/(60 + bm25_rank)`. Chroma stays the canonical store; the BM25 index is rebuilt from it whenever the **Index** changes.
 
@@ -95,7 +98,7 @@ The **Index** lives in `/data/chroma`, outside the **Target Project**, so the **
 
 ## Part 3: Patch Loop
 
-`POST /patch {intent, k, max_attempts}` is synchronous and returns `{status, attempts: [...], patch}`. Each **Attempt** records generation, **Sanity Check**, apply, and validation results.
+`POST /patch {intent, k, max_attempts}` is synchronous and returns `{status, attempts: [...], patch}`. Each **Attempt** records generation, **Sanity Check**, apply, and validation results. `max_attempts` is clamped to 1..3. One **Patch Loop** runs at a time; a second request waits for the first to finish.
 
 **Generation**: `qwen2.5-coder:3b` is called with `"format": "json"` and receives:
 1. the list of all files in the **Target Project**,
@@ -108,17 +111,18 @@ On later **Attempts** it also receives its previous **Patch** and the failure re
 1. contains a `=== FILE:` retrieval marker,
 2. creates a file that already exists,
 3. replaces a non-empty file with `""`, `"None"`, or `"null"`,
-4. defines a function whose body (docstring aside) is only `pass`, `...`, or `return None` (found with `ast`),
+4. defines a function whose body (docstring aside) is only `pass`, `...`, `return None`, or nothing at all (found with `ast`),
 5. shrinks an existing file by more than 60 %,
 6. touches more than three files,
 7. has a path outside the **Target Project** (absolute paths, `..`),
-8. touches `ioc.config.yml`, so the model cannot weaken the **Validation Command**.
+8. touches `ioc.config.yml` in any letter case (bind mounts can be case-insensitive), so the model cannot weaken the **Validation Command**,
+9. has a path that is a folder.
 
 **Apply**: take a **Snapshot** of every file the **Patch** touches (recording files that do not exist yet), write each new content to `<file>.ioc.tmp`, then `os.replace` each one once all temporaries are ready.
 
-**Validate**: run the **Validation Command** from `ioc.config.yml`, with `{files}` replaced by the changed `.py` files, in `/workspace`, with a 60-second timeout. A timeout is a failed **Attempt**.
+**Validate**: run the **Validation Command** from `ioc.config.yml`, with `{files}` replaced by the changed `.py` files (or `-`, so `py_compile` compiles nothing, when none changed), in `/workspace`, with a 60-second timeout. A timeout kills the whole process group and is a failed **Attempt**. The command runs with `PYTHONPYCACHEPREFIX` set to a temporary folder and `PYTEST_ADDOPTS=-p no:cacheprovider`, so it leaves no `.pyc` or `.pytest_cache` in the **Target Project** and a **Rollback** can never run stale bytecode.
 
-**Failure**: a failed **Attempt** (including a **Sanity Check** refusal) is rolled back to its **Snapshot** immediately, so every **Attempt** starts from the original code ([ADR-0005](./adr/0005-rollback-after-every-attempt.md)). After three failed **Attempts**, the **Target Project** is byte-for-byte what it was before the **Intent**.
+**Failure**: a failed **Attempt** (including a **Sanity Check** refusal) is rolled back to its **Snapshot** immediately, so every **Attempt** starts from the original code ([ADR-0005](./adr/0005-rollback-after-every-attempt.md)). After three failed **Attempts**, the **Target Project** is byte-for-byte what it was before the **Intent**: every file, and no folder made for a file that was created.
 
 **Success**: the **Watcher** picks up the changed files and reindexes them; no extra code is needed.
 
