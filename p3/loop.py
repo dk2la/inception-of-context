@@ -83,7 +83,7 @@ def take_snapshot(paths):
 
 
 def restore_snapshot(snapshot):
-    """Rollback: put every file back as the Snapshot saw it, and delete the files that did not exist."""
+    """Rollback: put every file back as the Snapshot saw it, and delete the files (and folders) that did not exist."""
     for rel_path, data in snapshot.items():
         path = full_path(rel_path)
         if data is not None:
@@ -92,6 +92,11 @@ def restore_snapshot(snapshot):
                 f.write(data)
         elif os.path.exists(path):
             os.remove(path)
+            # The folders made for a new file go too, as long as nothing else is in them.
+            folder = os.path.dirname(path)
+            while os.path.normpath(folder) != os.path.normpath(index.TARGET_DIR) and not os.listdir(folder):
+                os.rmdir(folder)
+                folder = os.path.dirname(folder)
 
 
 def apply_patch(patch):
