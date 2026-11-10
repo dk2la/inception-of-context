@@ -28,8 +28,8 @@ def test_startup_indexes_the_target_project_and_then_stops_the_watcher(temp_inde
     write(temp_index, "a.py", "def a():\n    return 1\n")
     with TestClient(app):
         assert wait_until(lambda: index.get_collection().count() > 0)
-        assert wait_until(lambda: "observer" in app_module.WATCHER)  # the Watcher starts after the rescan
-        observer = app_module.WATCHER["observer"]
+        assert wait_until(lambda: app_module.OBSERVER is not None)  # the Watcher starts after the rescan
+        observer = app_module.OBSERVER
         assert observer.is_alive()
         assert index.EVENTS == []  # the rescan at startup is not a live change: no events
     assert not observer.is_alive()
@@ -50,7 +50,7 @@ def test_threads_asking_for_the_collection_at_the_same_time_share_one_client(tem
 def test_after_startup_the_watcher_reindexes_changes(temp_index, monkeypatch):
     monkeypatch.setattr(index, "EVENTS", [])
     with TestClient(app) as client:
-        assert wait_until(lambda: "observer" in app_module.WATCHER)
+        assert wait_until(lambda: app_module.OBSERVER is not None)
         write(temp_index, "new.py", "def new():\n    return 1\n")
         assert wait_until(lambda: any(e["path"] == "new.py" for e in index.EVENTS))
         assert client.get("/status").status_code == 200
@@ -67,9 +67,9 @@ def test_the_server_answers_while_the_first_indexing_is_still_running(temp_index
     try:
         with TestClient(app) as client:
             assert client.get("/status").status_code == 200
-            assert "observer" not in app_module.WATCHER  # still busy indexing
+            assert app_module.OBSERVER is None  # still busy indexing
             release.set()
-            assert wait_until(lambda: "observer" in app_module.WATCHER)
+            assert wait_until(lambda: app_module.OBSERVER is not None)
     finally:
         release.set()
 
@@ -82,7 +82,7 @@ def test_a_failing_first_indexing_is_printed_and_the_server_keeps_running(temp_i
     with TestClient(app) as client:
         assert wait_until(lambda: "indexing failed" in capsys.readouterr().out)
         assert client.get("/status").status_code == 200
-    assert "observer" not in app_module.WATCHER
+    assert app_module.OBSERVER is None
 
 
 def test_the_watcher_and_the_api_share_one_chroma_client(temp_index, monkeypatch):
@@ -93,7 +93,7 @@ def test_the_watcher_and_the_api_share_one_chroma_client(temp_index, monkeypatch
     monkeypatch.setattr(chromadb, "PersistentClient", lambda path: created.append(path) or real_client(path=path))
     monkeypatch.setattr(index, "EVENTS", [])
     with TestClient(app) as client:
-        assert wait_until(lambda: "observer" in app_module.WATCHER)
+        assert wait_until(lambda: app_module.OBSERVER is not None)
         write(temp_index, "new.py", "def new():\n    return 1\n")
         assert wait_until(lambda: any(e["path"] == "new.py" for e in index.EVENTS))
         client.get("/status")

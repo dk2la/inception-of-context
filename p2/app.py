@@ -10,30 +10,34 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from p1 import index
+from p1.chunker import is_skipped, read_text
 from p2 import ask, search
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-WATCHER = {}  # holds the running observer, so the shutdown code can stop it
+OBSERVER = None  # the running Watcher, so the shutdown code can stop it
+CHUNK_FIELDS = ["start_line", "end_line", "name", "kind"]  # what a route says about a Chunk, besides its path
 
 
 def start_indexing():
     """Catch up with the Target Project, then start the Watcher. Runs in a background thread."""
+    global OBSERVER
     try:
         print(f"indexing {index.TARGET_DIR} ...")
         print(f"indexed {index.index_all()} chunks")
-        WATCHER["observer"] = index.watch()
+        OBSERVER = index.watch()
     except Exception as error:
         print(f"indexing failed: {error}")
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app):
+    global OBSERVER
     threading.Thread(target=start_indexing, daemon=True).start()  # a thread, so requests are answered meanwhile
     yield
-    observer = WATCHER.pop("observer", None)
-    if observer:
-        observer.stop()
-        observer.join()
+    if OBSERVER:
+        OBSERVER.stop()
+        OBSERVER.join()
+        OBSERVER = None
 
 
 app = FastAPI(lifespan=lifespan)
@@ -69,13 +73,13 @@ def get_file(path: str):
     full = os.path.realpath(os.path.join(root, path))  # realpath resolves ".." and symlinks
     rel_path = os.path.relpath(full, root).replace(os.sep, "/")
     # Never trust a path from a request: only files inside the Target Project, and only ones we index.
-    if not full.startswith(root + os.sep) or index.is_skipped(rel_path):
+    if not full.startswith(root + os.sep) or is_skipped(rel_path):
         raise HTTPException(status_code=404, detail="file not found")
-    content = index.read_text(full)
+    content = read_text(full)
     if content is None:  # missing, a folder or binary
         raise HTTPException(status_code=404, detail="file not found")
     found = index.get_collection().get(where={"path": rel_path}, include=["metadatas"])
-    chunks = [{key: meta[key] for key in ["start_line", "end_line", "name", "kind"]} for meta in found["metadatas"]]
+    chunks = [{key: meta[key] for key in CHUNK_FIELDS} for meta in found["metadatas"]]
     chunks.sort(key=lambda chunk: chunk["start_line"])
     return {"path": rel_path, "content": content, "chunks": chunks}
 
@@ -86,17 +90,8 @@ def chunks(offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):
     collection = index.get_collection()
     found = collection.get(offset=offset, limit=limit, include=["documents", "metadatas"])
     items = []
-    for i in range(len(found["ids"])):  # ids, documents and metadatas are parallel lists
-        meta = found["metadatas"][i]
-        items.append({
-            "id": found["ids"][i],
-            "path": meta["path"],
-            "start_line": meta["start_line"],
-            "end_line": meta["end_line"],
-            "name": meta["name"],
-            "kind": meta["kind"],
-            "text": found["documents"][i],
-        })
+    for chunk_id, text, meta in zip(found["ids"], found["documents"], found["metadatas"]):
+        items.append({"id": chunk_id, "text": text, **{key: meta[key] for key in ["path"] + CHUNK_FIELDS}})
     return {"total": collection.count(), "offset": offset, "limit": limit, "items": items}
 
 

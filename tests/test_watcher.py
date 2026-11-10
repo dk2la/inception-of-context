@@ -276,7 +276,7 @@ def test_console_command_with_watch_prints_each_event_once_and_stops_on_ctrl_c(t
 def test_console_command_without_watch_does_not_start_the_watcher(temp_index, monkeypatch, capsys):
     write(temp_index, "a.py", "def a():\n    pass\n")
     monkeypatch.setattr(sys, "argv", ["p1.index", temp_index])
-    monkeypatch.setattr(index, "watch", lambda root=None: pytest.fail("the Watcher must not start"))
+    monkeypatch.setattr(index, "watch", lambda: pytest.fail("the Watcher must not start"))
     index.main()
     assert capsys.readouterr().out == "indexed 1 chunks from 1 files\n"
 

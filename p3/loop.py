@@ -17,6 +17,7 @@ from p2 import ask, search
 from p3.sanity import MARKER, MAX_FILES, check_patch
 
 VALIDATION_TIMEOUT = 60  # seconds
+MAX_ATTEMPTS = 3  # the plan gives the model three tries, then the Patch Loop gives up
 
 
 def load_validation_command():
@@ -226,11 +227,11 @@ PATCH_LOCK = threading.Lock()  # a second Patch Loop would snapshot the files th
 
 
 def run_patch_loop(intent, k=5, max_attempts=3):
-    """Try up to max_attempts (1 to 3) Attempts, telling the model why the last one failed."""
+    """Try up to max_attempts (1 to MAX_ATTEMPTS) Attempts, telling the model why the last one failed."""
     with PATCH_LOCK:  # one Patch Loop at a time; another request waits here
         attempts = []
         previous = None
-        for number in range(1, max(1, min(3, max_attempts)) + 1):
+        for number in range(1, max(1, min(MAX_ATTEMPTS, max_attempts)) + 1):
             attempt = run_attempt(intent, k, previous, number)
             attempts.append(attempt)
             if attempt["ok"]:
