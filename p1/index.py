@@ -42,13 +42,18 @@ def metadata_of(chunk):
     return {key: chunk[key] for key in keys}
 
 
+def relative_path(full_path):
+    """A path the way the Index stores it: relative to the Target Project, with forward slashes."""
+    return os.path.relpath(full_path, TARGET_DIR).replace(os.sep, "/")
+
+
 def reindex_file(full_path):
     """Make the Index match one file on disk. Return how many Chunks the file has now.
 
     A file that is missing, skipped or binary has no Chunks, so its old Chunks are deleted.
     """
     global INDEX_VERSION
-    rel_path = os.path.relpath(full_path, TARGET_DIR).replace(os.sep, "/")
+    rel_path = relative_path(full_path)
     if rel_path.startswith(".."):
         return 0  # outside the Target Project
 
@@ -100,18 +105,17 @@ def list_files(root):
     return sorted(found)
 
 
-def index_all(root=None):
+def index_all():
     """Make the Index match the whole Target Project. Return the number of Chunks in the Index."""
-    root = root or TARGET_DIR
     on_disk = set()
-    for full_path in list_files(root):
+    for full_path in list_files(TARGET_DIR):
         reindex_file(full_path)
-        on_disk.add(os.path.relpath(full_path, root).replace(os.sep, "/"))
+        on_disk.add(relative_path(full_path))
 
     # Files deleted while nobody was watching are only in the Index: reindexing them removes them.
     stored = get_collection().get(include=["metadatas"])
     for rel_path in {m["path"] for m in stored["metadatas"]} - on_disk:
-        reindex_file(os.path.join(root, rel_path))
+        reindex_file(os.path.join(TARGET_DIR, rel_path))
     return get_collection().count()
 
 
@@ -126,7 +130,7 @@ class Handler(FileSystemEventHandler):
         if event.event_type == "moved":  # a move is a delete of the old path plus a create of the new one
             paths.append(event.dest_path)
         for path in paths:
-            rel_path = os.path.relpath(path, TARGET_DIR).replace(os.sep, "/")
+            rel_path = relative_path(path)
             if is_skipped(rel_path):
                 continue
             try:  # one broken file must never stop the Watcher
@@ -136,14 +140,13 @@ class Handler(FileSystemEventHandler):
                 print(f"watcher: could not handle {rel_path}: {error}")
 
 
-def watch(root=None):
+def watch():
     """Start reindexing files as they change, in a background thread. Return the observer (stop it with .stop())."""
-    root = root or TARGET_DIR
     # Docker bind mounts on macOS and Windows often drop file notifications, so WATCH_POLLING=1 checks the files instead.
     polling = os.environ.get("WATCH_POLLING") == "1"
     observer = PollingObserver() if polling else Observer()
-    print(f"watching {root} ({'polling' if polling else 'notifications'})")
-    observer.schedule(Handler(), root, recursive=True)
+    print(f"watching {TARGET_DIR} ({'polling' if polling else 'notifications'})")
+    observer.schedule(Handler(), TARGET_DIR, recursive=True)
     observer.start()
     return observer
 
@@ -157,10 +160,10 @@ def main():
     args = parser.parse_args()
     if args.dir:
         TARGET_DIR = os.path.realpath(args.dir)
-    chunks = index_all(TARGET_DIR)
+    chunks = index_all()
     print(f"indexed {chunks} chunks from {len(list_files(TARGET_DIR))} files")
     if args.watch:
-        observer = watch(TARGET_DIR)
+        observer = watch()
         printed = 0  # how many events were shown already
         try:
             while True:

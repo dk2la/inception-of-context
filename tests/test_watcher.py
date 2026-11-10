@@ -66,7 +66,7 @@ def chunks_of(path):
 def test_watcher_indexes_a_new_file(temp_index, monkeypatch):
     """Slower test: real filesystem events."""
     monkeypatch.setattr(index, "EVENTS", [])
-    observer = index.watch(temp_index)
+    observer = index.watch()
     try:
         write(temp_index, "a.py", "def a():\n    return 1\n")
         assert wait_until(lambda: happened("indexed", "a.py"))
@@ -81,7 +81,7 @@ def test_watcher_reindexes_an_edited_file(temp_index, monkeypatch):
     monkeypatch.setattr(index, "EVENTS", [])
     write(temp_index, "a.py", "def a():\n    return 1\n")
     index.index_all()
-    observer = index.watch(temp_index)
+    observer = index.watch()
     try:
         write(temp_index, "a.py", "def a():\n    return 1\n\n\ndef b():\n    return 2\n")
         assert wait_until(lambda: any(e["path"] == "a.py" and e["chunks"] == 2 for e in index.EVENTS))
@@ -96,7 +96,7 @@ def test_watcher_removes_the_chunks_of_a_deleted_file(temp_index, monkeypatch):
     monkeypatch.setattr(index, "EVENTS", [])
     path = write(temp_index, "a.py", "def a():\n    return 1\n")
     index.index_all()
-    observer = index.watch(temp_index)
+    observer = index.watch()
     try:
         os.remove(path)
         assert wait_until(lambda: happened("deleted", "a.py"))
@@ -110,7 +110,7 @@ def test_watcher_removes_the_chunks_of_a_deleted_file(temp_index, monkeypatch):
 def test_watcher_ignores_temporary_hidden_and_skipped_files(temp_index, monkeypatch):
     """Slower test: real filesystem events."""
     monkeypatch.setattr(index, "EVENTS", [])
-    observer = index.watch(temp_index)
+    observer = index.watch()
     try:
         write(temp_index, "b.py.ioc.tmp", "def b():\n    pass\n")
         write(temp_index, ".swap.py", "def s():\n    pass\n")
@@ -128,7 +128,7 @@ def test_watcher_ignores_temporary_hidden_and_skipped_files(temp_index, monkeypa
 def test_watcher_watches_new_subfolders_and_reports_only_files(temp_index, monkeypatch):
     """Slower test: real filesystem events."""
     monkeypatch.setattr(index, "EVENTS", [])
-    observer = index.watch(temp_index)
+    observer = index.watch()
     try:
         os.makedirs(os.path.join(temp_index, "sub"))
         write(temp_index, "sub/a.py", "def a():\n    return 1\n")  # files in a new subfolder are watched too
@@ -150,7 +150,7 @@ def test_a_failing_event_does_not_stop_the_watcher(temp_index, monkeypatch, caps
         return real_reindex(full_path)
 
     monkeypatch.setattr(index, "reindex_file", broken_for_bad_py)
-    observer = index.watch(temp_index)
+    observer = index.watch()
     try:
         write(temp_index, "bad.py", "def bad():\n    pass\n")
         write(temp_index, "good.py", "def good():\n    return 1\n")
@@ -175,7 +175,7 @@ def test_watcher_ignores_the_opened_events_that_reading_a_file_causes_on_linux(t
 def test_renaming_a_file_removes_the_old_path_and_indexes_the_new_one(temp_index, monkeypatch):
     """Slower test: real filesystem events."""
     monkeypatch.setattr(index, "EVENTS", [])
-    observer = index.watch(temp_index)
+    observer = index.watch()
     try:
         write(temp_index, "old.py", "def a():\n    return 1\n")
         assert wait_until(lambda: happened("indexed", "old.py"))
@@ -191,7 +191,7 @@ def test_renaming_a_file_removes_the_old_path_and_indexes_the_new_one(temp_index
 def test_replacing_a_file_through_an_ioc_tmp_file_reindexes_the_real_file_only(temp_index, monkeypatch):
     """Slower test: real filesystem events. This is how the Patch Loop writes files."""
     monkeypatch.setattr(index, "EVENTS", [])
-    observer = index.watch(temp_index)
+    observer = index.watch()
     try:
         write(temp_index, "x.py", "def x():\n    return 1\n")
         assert wait_until(lambda: happened("indexed", "x.py"))
@@ -213,7 +213,7 @@ def test_watch_polling_uses_the_polling_observer_and_still_indexes_files(temp_in
 
     monkeypatch.setattr(index, "EVENTS", [])
     monkeypatch.setenv("WATCH_POLLING", "1")
-    observer = index.watch(temp_index)
+    observer = index.watch()
     try:
         assert isinstance(observer, PollingObserver)
         assert "(polling)" in capsys.readouterr().out
@@ -232,7 +232,7 @@ def test_without_watch_polling_one_the_normal_observer_is_used(temp_index, monke
     monkeypatch.delenv("WATCH_POLLING", raising=False)
     if value:
         monkeypatch.setenv("WATCH_POLLING", value)
-    observer = index.watch(temp_index)
+    observer = index.watch()
     try:
         assert not isinstance(observer, PollingObserver)
         assert "(notifications)" in capsys.readouterr().out
