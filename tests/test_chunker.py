@@ -1,15 +1,9 @@
 import os
 
-from p1.chunker import (
-    chunk_by_regex,
-    chunk_file,
-    chunk_markdown,
-    chunk_python,
-    chunk_yaml,
-    is_skipped,
-    make_chunk,
-    read_text,
-)
+from p1.models.chunk import make_chunk
+from p1.repositories.file_repository import is_skipped, read_text
+from p1.services.chunker import chunk_by_regex, chunk_file, chunk_markdown, chunk_python, chunk_yaml
+
 
 # --- make_chunk ---
 
@@ -418,3 +412,13 @@ def test_read_text_refuses_binary_files(tmp_path):
 def test_read_text_missing_file_and_directory(tmp_path):
     assert read_text(str(tmp_path / "nope.py")) is None
     assert read_text(str(tmp_path)) is None
+
+
+def test_blank_lines_at_the_end_of_a_section_are_left_out():
+    chunks = chunk_markdown("notes.md", "# A\ntext\n\n\n# B\nmore\n")
+    assert [(c["name"], c["start_line"], c["end_line"]) for c in chunks] == [("A", 1, 2), ("B", 5, 6)]
+
+
+def test_blank_lines_at_the_start_of_a_section_are_left_out():
+    chunks = chunk_markdown("notes.md", "\n\nintro\n# A\ntext\n")
+    assert [(c["name"], c["start_line"], c["end_line"]) for c in chunks] == [("<module>", 3, 3), ("A", 4, 5)]

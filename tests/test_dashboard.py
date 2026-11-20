@@ -2,6 +2,7 @@ import pathlib
 import subprocess
 import sys
 
+
 REPO_ROOT = pathlib.Path(__file__).parent.parent
 
 
@@ -16,6 +17,15 @@ def test_dashboard_has_the_five_tabs(client):
     page = client.get("/").text
     for tab in ["Overview", "Files", "ChromaDB Explorer", "Ask & Retrieve", "Patch Loop"]:
         assert tab in page
+
+
+def test_dashboard_has_the_3d_view(client):
+    """The 3D View is plain CSS 3D: one cube per step of every part, a tour and replays, no library to download."""
+    page = client.get("/").text
+    assert 'data-tab="scene"' in page
+    assert 'id="tab-scene"' in page
+    for replay in ["index", "facts", "ask", "patch", "rollback"]:
+        assert f'data-replay="{replay}"' in page
 
 
 def test_dashboard_works_offline(client):

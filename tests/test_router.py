@@ -1,6 +1,6 @@
 import pytest
 
-from p2.ask import route_question
+from p2.services.router import route_question
 
 
 # --- "is there a function X?" ---

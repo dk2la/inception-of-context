@@ -8,7 +8,8 @@ Everything runs in Docker. The only models are local [Ollama](https://ollama.com
 (`qwen2.5:3b` and `qwen2.5-coder:3b`), and the embedding model is baked into the image at build time.
 **No cloud LLM and no external API is ever contacted.**
 
-The three parts of the subject are three folders, each one importing the previous one:
+The three parts of the subject are three folders, each one using the previous one. Inside each part the code is
+split into the same layers (see [Project layout](#project-layout)):
 
 | Part | Folder | What it does |
 |------|--------|--------------|
@@ -46,6 +47,15 @@ make up       # start the API, the Watcher and the dashboard
 - After `make p1`: it prints `indexed N chunks from M files`. Run it while `ioc` is **stopped**
   (`make down` first): only one process may write to the Index ([ADR-0002](docs/adr/0002-one-process-layered-parts.md)).
 - After `make up`: the dashboard is at <http://localhost:8000>, and the Overview tab shows the same Chunk count.
+
+### The dashboard
+
+Six tabs, keys `1`–`6`: Overview (System map, status, live Watcher events), Files, ChromaDB Explorer, Ask & Retrieve,
+Patch Loop, and **3D View**. The 3D View shows the three parts as stacked levels, one cube per step; the cubes follow
+the live system. For a demo: **Tour** (or `←` `→`) walks through every step with an explanation and the file that does
+it, the **Replay** buttons play each flow (indexing, a symbol question, an LLM question, a green patch, a rollback)
+without waiting for the model, a click on a cube explains it, `F` is fullscreen and `R` resets the camera.
+It is plain CSS 3D: nothing is downloaded, it works offline.
 
 ## Other commands
 
@@ -109,9 +119,18 @@ first, so that only one process writes to the Index).
 The tests never call a model (a fake replaces it) and never touch the real Index or the real `target/`.
 
 ```
+make test                                # everything in Docker: repository tests with coverage, then the Target Project's tests
 python -m pytest -q                      # the repository tests, from the repository root
+python -m pytest -q tests/e2e            # only the end-to-end tests
 cd target && python -m pytest -q         # the Target Project's own tests
 ```
+
+- `tests/test_*.py`: every layer of every part, at 100% line and branch coverage (`.coveragerc`).
+- `tests/test_layers.py`: the layer rules: views → services → repositories → models, a part imports only earlier
+  parts, only `p1/core` talks to Chroma and to Ollama, every source file is inside `p1/`, `p2/` or `p3/`.
+- `tests/e2e/`: the real server started with uvicorn over a copy of `target/`, with a fake Ollama that answers from a
+  script. They check each requirement of the subject from the outside: indexing, the Watcher, questions, the Patch
+  Loop with byte-exact rollback, the sanity refusals and the 503 when Ollama is down.
 
 Inside Docker:
 
@@ -124,10 +143,30 @@ docker compose run --rm -w /workspace ioc python -m pytest -q       # Target Pro
 
 ```
 target/        the Target Project: a calculator with its own tests and ioc.config.yml (the Validation Command)
-p1/            Part 1: chunker.py, index.py (Index, Watcher, console command)
-p2/            Part 2: search.py (retrieval), ask.py (Questions, the model call), app.py (API), static/index.html (dashboard)
-p3/            Part 3: sanity.py (Sanity Checks), loop.py (Patch Loop), app.py (adds POST /patch)
-tests/         tests of p1, p2 and p3
+p1/            Part 1, Index + Watcher, and what every part shares
+  config/        settings.py: every setting (environment variables and limits)
+  core/          database.py (the one Chroma client), llm.py (the only call to the model)
+  models/        Chunk, Event
+  schemas/       response bodies of the Part 1 routes
+  repositories/  chunk_repository (writes and browses the Index), file_repository (disk), event_repository
+  services/      chunker, indexer, watcher, overview
+  views/         /status /files /file /chunks, /events
+  index.py       the console command
+p2/            Part 2, retrieval + answers + dashboard
+  models/        Answer
+  schemas/       bodies of /context and /ask
+  repositories/  search_repository (reads the Index for retrieval)
+  services/      search (vector + BM25 + RRF), router (symbol questions), ask
+  views/         /context /ask, / (dashboard, static/index.html), errors (503)
+  app.py         the FastAPI app (Part 1 + Part 2 routes, the Watcher in the background)
+p3/            Part 3, Patch Loop
+  models/        Patch, Attempt
+  schemas/       bodies of /patch
+  repositories/  target_files (Snapshot, apply, Rollback)
+  services/      sanity, validation, patch_loop
+  views/         /patch
+  app.py         the Part 2 app plus /patch
+tests/         tests of every part; tests/test_layers.py checks the layer rules
 docs/          plan.md (the design), adr/ (the reasons behind it)
 GLOSSARY.md    the words used everywhere: Chunk, Index, Watcher, Intent, Patch, Attempt, Rollback, ...
 ```

@@ -2,8 +2,11 @@ import os
 
 import pytest
 
-from p1.index import reindex_file
-from p2 import ask
+from p1.config import settings
+from p1.core import llm
+from p1.services.indexer import reindex_file
+from p2.services import ask
+
 
 CALC = '''class Calculator:
     def add(self, a, b):
@@ -223,7 +226,7 @@ def test_ask_uses_the_answer_model_in_plain_text_mode(client, fake_llm):
     fake_llm.replies = ["ok"]
     ask.ask("How does division work?")
     model, _, json_mode = fake_llm.prompts[0]
-    assert model == ask.ANSWER_MODEL
+    assert model == settings.ANSWER_MODEL
     assert json_mode is False
 
 
@@ -255,8 +258,8 @@ def test_ask_does_not_call_the_model_when_nothing_is_indexed(temp_index, fake_ll
 
 
 def test_ask_lets_a_model_error_through(client, fake_llm):
-    fake_llm.error = ask.LLMError("Ollama is not reachable")
-    with pytest.raises(ask.LLMError):
+    fake_llm.error = llm.LLMError("Ollama is not reachable")
+    with pytest.raises(llm.LLMError):
         ask.ask("How does division work?")
 
 

@@ -3,7 +3,9 @@ import re
 
 from rank_bm25 import BM25Okapi
 
-from p1 import index
+from p1.config import settings
+from p1.core import database
+from p2.repositories import search_repository
 
 
 def tokenize(text):
@@ -13,13 +15,7 @@ def tokenize(text):
 
 def vector_search(query):
     """Rank every Chunk by meaning. Return (ids best first, {id: similarity})."""
-    collection = index.get_collection()
-    if collection.count() == 0:
-        return [], {}  # Chroma refuses to return 0 results
-    result = collection.query(query_texts=[query], n_results=collection.count())
-    ids = result["ids"][0]
-    similarity = {i: 1 - d for i, d in zip(ids, result["distances"][0])}
-    return ids, similarity
+    return search_repository.rank_by_meaning(query)
 
 
 _bm25 = None  # the BM25Okapi object, or None when the Index is empty
@@ -31,12 +27,13 @@ _bm25_collection = None  # the collection they were built from (a different Inde
 def _build_bm25(collection):
     """Read every Chunk from the Index and build the BM25 index from them."""
     global _bm25, _bm25_ids, _bm25_version, _bm25_collection
-    stored = collection.get()
-    _bm25_ids = stored["ids"]
-    _bm25 = None
-    if _bm25_ids:  # BM25Okapi fails on no documents
-        _bm25 = BM25Okapi([tokenize(text) for text in stored["documents"]])
-    _bm25_version = index.INDEX_VERSION
+    # The version is read BEFORE the texts: if the Watcher changes the Index in between, this BM25 index
+    # is marked older than the Index and is rebuilt on the next search, instead of staying stale.
+    version = database.INDEX_VERSION
+    ids, texts = search_repository.all_texts()
+    bm25 = BM25Okapi([tokenize(text) for text in texts]) if ids else None  # BM25Okapi fails on no documents
+    _bm25, _bm25_ids = bm25, ids  # set together, so a search in another thread never mixes two builds
+    _bm25_version = version
     _bm25_collection = collection
 
 
@@ -45,17 +42,15 @@ def bm25_search(query):
 
     The BM25 index is rebuilt only when the Index changed (a new version, or another Index).
     """
-    collection = index.get_collection()
-    if index.INDEX_VERSION != _bm25_version or collection is not _bm25_collection:
+    collection = database.get_collection()
+    if database.INDEX_VERSION != _bm25_version or collection is not _bm25_collection:
         _build_bm25(collection)
-    if _bm25 is None:
+    bm25, ids = _bm25, _bm25_ids  # one consistent pair, even if another thread rebuilds meanwhile
+    if bm25 is None:
         return []
-    scores = _bm25.get_scores(tokenize(query))
-    ranked = sorted(zip(_bm25_ids, scores), key=lambda pair: pair[1], reverse=True)
+    scores = bm25.get_scores(tokenize(query))
+    ranked = sorted(zip(ids, scores), key=lambda pair: pair[1], reverse=True)
     return [chunk_id for chunk_id, _ in ranked]
-
-
-RRF_K = 60  # the usual constant: a Chunk far down one list still gets a little from it
 
 
 def rrf_merge(ranked_a, ranked_b):
@@ -63,7 +58,7 @@ def rrf_merge(ranked_a, ranked_b):
     scores = {}
     for ranked in (ranked_a, ranked_b):
         for rank, chunk_id in enumerate(ranked, start=1):
-            scores[chunk_id] = scores.get(chunk_id, 0) + 1 / (RRF_K + rank)
+            scores[chunk_id] = scores.get(chunk_id, 0) + 1 / (settings.RRF_K + rank)
     return scores
 
 
@@ -75,10 +70,11 @@ def search(query, k):
     if not top_ids:
         return []  # empty Index or k <= 0; Chroma refuses to get no ids
 
-    found = index.get_collection().get(ids=top_ids)  # Chroma may return them in any order
-    by_id = dict(zip(found["ids"], zip(found["documents"], found["metadatas"])))
+    by_id = search_repository.get_many(top_ids)
     results = []
     for chunk_id in top_ids:
+        if chunk_id not in by_id:
+            continue  # the Watcher deleted it after it was ranked (a file changed during this search)
         text, metadata = by_id[chunk_id]
         results.append({**metadata, "id": chunk_id, "text": text,
                         "similarity": similarity.get(chunk_id, 0.0), "score": scores[chunk_id]})

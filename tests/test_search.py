@@ -3,10 +3,14 @@ import os
 import pytest
 from rank_bm25 import BM25Okapi
 
-from p1 import index
-from p1.index import get_collection, reindex_file
-from p2 import search
-from p2.search import bm25_search, rrf_merge, tokenize, vector_search
+from p1.config import settings
+from p1.core import database
+from p1.core.database import get_collection
+from p1.services.indexer import reindex_file
+from p2.repositories import search_repository
+from p2.services import search
+from p2.services.search import bm25_search, rrf_merge, tokenize, vector_search
+
 
 # --- helpers ---
 
@@ -151,8 +155,8 @@ def test_bm25_does_not_reuse_the_cache_of_another_index(temp_index, tmp_path, mo
     reindex_file(write(temp_index, "math.py", THREE))
     bm25_search("divide")
     # A second, empty Index: nothing was reindexed, so INDEX_VERSION is still the same number.
-    monkeypatch.setattr(index, "CHROMA_DIR", str(tmp_path / "other_chroma"))
-    monkeypatch.setattr(index, "_collection", None)
+    monkeypatch.setattr(settings, "CHROMA_DIR", str(tmp_path / "other_chroma"))
+    monkeypatch.setattr(database, "_collection", None)
     assert bm25_search("divide") == []
 
 
@@ -236,3 +240,37 @@ def test_search_on_an_empty_index_returns_nothing(temp_index):
 def test_search_with_k_zero_or_negative_returns_nothing(temp_index, k):
     reindex_file(write(temp_index, "math.py", FOUR))
     assert search.search("divide", k) == []
+
+
+# --- the Watcher changes the Index while a search runs ---
+
+
+def test_a_change_while_bm25_reads_the_index_makes_the_next_search_rebuild(temp_index, monkeypatch):
+    """If the Index changes between reading the version and reading the texts, the cache must not look fresh."""
+    path = write(temp_index, "math.py", MATH)
+    reindex_file(path)
+    real_all_texts = search_repository.all_texts
+
+    def all_texts_then_the_watcher_changes_the_file():
+        found = real_all_texts()
+        monkeypatch.setattr(search_repository, "all_texts", real_all_texts)  # only once
+        write(temp_index, "math.py", "def square_root(x):\n    return x ** 0.5\n")
+        reindex_file(path)
+        return found
+
+    monkeypatch.setattr(search_repository, "all_texts", all_texts_then_the_watcher_changes_the_file)
+    bm25_search("divide")  # built from the old texts while the file changed
+    assert [name_of(i) for i in bm25_search("square root")] == ["square_root"]
+
+
+def test_search_skips_a_chunk_deleted_after_it_was_ranked(temp_index, monkeypatch):
+    reindex_file(write(temp_index, "math.py", MATH))
+    real_get_many = search_repository.get_many
+
+    def get_many_after_a_delete(ids):
+        get_collection().delete(ids=[ids[0]])  # the Watcher removes the best Chunk just now
+        return real_get_many(ids)
+
+    monkeypatch.setattr(search_repository, "get_many", get_many_after_a_delete)
+    results = search.search("divide", 5)
+    assert [r["name"] for r in results] == ["greet"]

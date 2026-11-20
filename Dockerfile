@@ -2,6 +2,8 @@ FROM python:3.12-slim
 
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
+# Chroma's anonymous usage telemetry would contact a remote server; everything here stays local.
+ENV ANONYMIZED_TELEMETRY=False
 
 # Dependencies change rarely, so they come before the code (Docker caches each step).
 COPY requirements.txt .

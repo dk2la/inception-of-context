@@ -2,8 +2,13 @@ import os
 import shutil
 import sys
 
-from p1 import index
-from p1.index import chunk_id, get_collection, index_all, list_files, main, reindex_file
+from p1.config import settings
+from p1.core import database
+from p1.core.database import get_collection
+from p1.index import main
+from p1.models.chunk import chunk_id
+from p1.repositories.file_repository import list_files
+from p1.services.indexer import index_all, reindex_file
 
 
 def test_chunk_id_is_a_stable_64_character_hex_string():
@@ -65,13 +70,13 @@ def test_collection_starts_empty_and_is_shared(temp_index):
 
 def test_index_survives_a_restart(temp_index):
     get_collection().add(ids=["x"], documents=["hello"], metadatas=[{"path": "a.py"}])
-    index._collection = None  # like a new process
+    database._collection = None  # like a new process
     assert get_collection().count() == 1
 
 
 def test_temp_index_does_not_point_at_the_real_folders(temp_index):
-    assert not index.CHROMA_DIR.startswith("/data")
-    assert index.TARGET_DIR == temp_index
+    assert not settings.CHROMA_DIR.startswith("/data")
+    assert settings.TARGET_DIR == temp_index
 
 
 # --- reindex_file: a new file ---
@@ -90,10 +95,10 @@ def test_stored_paths_are_relative_with_forward_slashes(temp_index):
 
 
 def test_reindex_of_an_empty_file_writes_nothing(temp_index):
-    before = index.INDEX_VERSION
+    before = database.INDEX_VERSION
     assert reindex_file(write(temp_index, "empty.py", "")) == 0
     assert get_collection().count() == 0
-    assert index.INDEX_VERSION == before
+    assert database.INDEX_VERSION == before
 
 
 def test_identical_functions_in_one_file_do_not_crash(temp_index):
@@ -119,11 +124,11 @@ def test_editing_one_function_replaces_only_its_chunk(temp_index):
 def test_reindexing_an_unchanged_file_writes_nothing(temp_index):
     path = write(temp_index, "calc.py", CALC)
     reindex_file(path)
-    ids, version = ids_of("calc.py"), index.INDEX_VERSION
+    ids, version = ids_of("calc.py"), database.INDEX_VERSION
     for _ in range(5):
         reindex_file(path)
     assert ids_of("calc.py") == ids
-    assert index.INDEX_VERSION == version
+    assert database.INDEX_VERSION == version
     assert get_collection().count() == 4
 
 
@@ -185,9 +190,9 @@ def test_binary_files_have_no_chunks(temp_index):
 
 
 def test_a_path_that_never_existed_is_ignored(temp_index):
-    before = index.INDEX_VERSION
+    before = database.INDEX_VERSION
     assert reindex_file(os.path.join(temp_index, "ghost.py")) == 0
-    assert index.INDEX_VERSION == before
+    assert database.INDEX_VERSION == before
 
 
 def test_a_path_outside_the_target_project_is_ignored(temp_index, tmp_path):
@@ -233,9 +238,9 @@ def test_index_all_indexes_every_file_and_returns_the_count(temp_index):
 def test_second_index_all_writes_nothing(temp_index):
     write(temp_index, "calc.py", CALC)
     index_all()
-    version = index.INDEX_VERSION
+    version = database.INDEX_VERSION
     assert index_all() == 4
-    assert index.INDEX_VERSION == version
+    assert database.INDEX_VERSION == version
 
 
 def test_index_all_picks_up_edits_made_while_the_server_was_down(temp_index):
@@ -283,6 +288,13 @@ def test_console_command_prints_a_summary(temp_index, monkeypatch, capsys):
     assert capsys.readouterr().out == "indexed 3 chunks from 2 files\n"
 
 
+def test_console_command_without_a_folder_indexes_target_dir(temp_index, monkeypatch, capsys):
+    write(temp_index, "a.py", "def a():\n    pass\n")
+    monkeypatch.setattr(sys, "argv", ["p1.index"])
+    main()
+    assert capsys.readouterr().out == "indexed 1 chunks from 1 files\n"
+
+
 def test_moved_chunks_keep_their_ids_but_get_new_line_numbers(temp_index):
     path = write(temp_index, "m.py", "def a():\n    return 1\n")
     reindex_file(path)
@@ -297,7 +309,7 @@ def test_moved_chunks_keep_their_ids_but_get_new_line_numbers(temp_index):
 def test_moved_chunks_do_not_change_the_index_version(temp_index):
     path = write(temp_index, "m.py", "def a():\n    return 1\n")
     reindex_file(path)
-    version = index.INDEX_VERSION
+    version = database.INDEX_VERSION
     write(temp_index, "m.py", "\n\ndef a():\n    return 1\n")  # a() moved down, nothing else changed
     reindex_file(path)
-    assert index.INDEX_VERSION == version
+    assert database.INDEX_VERSION == version

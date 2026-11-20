@@ -1,33 +1,15 @@
-"""Cut a file into Chunks: one logical block each (a function, a class, a YAML key, ...)."""
+"""Cut a file into Chunks: one logical block each (a function, a class, a YAML key, ...).
+
+Pure functions: text in, Chunks out. Nothing here reads or writes anything.
+"""
 import ast
-import hashlib
 import os
 import re
 
+from p1.models.chunk import make_chunk
+
 # A line that starts a definition in almost any language: def, async def, class, function.
 DEFINITION = re.compile(r"^\s*(?:async\s+def|def|class|function)\s+([A-Za-z_]\w*)")
-
-
-def make_chunk(path, start_line, end_line, name, kind, text):
-    """Return one Chunk as a dict with these keys:
-
-    path        file path relative to the Target Project, with forward slashes
-    start_line  first line of the Chunk (1-based, inclusive)
-    end_line    last line of the Chunk (1-based, inclusive)
-    name        symbol name; methods are "Class.method", the module header is "<module>"
-    kind        function, async_function, class, method, module, yaml_key, heading or definition
-    text        the exact source text of the Chunk
-    hash        SHA-256 (hex) of text
-    """
-    return {
-        "path": path,
-        "start_line": start_line,
-        "end_line": end_line,
-        "name": name,
-        "kind": kind,
-        "text": text,
-        "hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-    }
 
 
 def cut(lines, start, end):
@@ -152,33 +134,3 @@ def chunk_file(path, text):
     if extension == ".md":
         return chunk_markdown(path, text)
     return chunk_by_regex(path, text)
-
-
-# Folders we never index. Hidden files and folders (starting with ".") are skipped too.
-SKIPPED_NAMES = {"node_modules", ".git", "dist", "build", "venv", ".venv", "__pycache__"}
-
-
-def is_skipped(rel_path):
-    """True if a path (relative to the Target Project) must never be indexed."""
-    parts = rel_path.replace("\\", "/").split("/")
-    for part in parts:
-        if part in ("", "."):
-            continue
-        if part in SKIPPED_NAMES or part.startswith("."):
-            return True
-    return parts[-1].endswith(".ioc.tmp")
-
-
-def read_text(path):
-    """Return the file's text, or None if it is missing, a directory, binary or not UTF-8."""
-    try:
-        with open(path, "rb") as f:
-            data = f.read()
-    except (FileNotFoundError, IsADirectoryError):
-        return None
-    if b"\x00" in data[:8192]:
-        return None
-    try:
-        return data.decode("utf-8")
-    except UnicodeDecodeError:
-        return None

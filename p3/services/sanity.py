@@ -6,8 +6,8 @@ A Patch looks like {"summary": ..., "files": [{"path": ..., "op": "create|modify
 import ast
 import os
 
-MAX_FILES = 3
-MAX_SHRINK = 60  # percent
+from p1.config import settings
+
 MARKER = "=== FILE:"  # the line that starts each file in the Patch prompt; it must never reach a file
 
 
@@ -24,7 +24,7 @@ def touches_config(patch, target_dir):
     """Refuse any change to ioc.config.yml, so the model cannot weaken the Validation Command."""
     for entry in patch["files"]:
         # lower(): on a case-insensitive disk (a macOS bind mount) IOC.config.yml is the same file
-        if os.path.normpath(entry["path"].replace("\\", "/")).lower() == "ioc.config.yml":
+        if os.path.normpath(entry["path"].replace("\\", "/")).lower() == settings.VALIDATION_CONFIG.lower():
             return "the Patch may not change ioc.config.yml (it holds the Validation Command)"
     return None
 
@@ -38,10 +38,10 @@ def targets_folder(patch, target_dir):
 
 
 def too_many_files(patch, target_dir):
-    """Refuse a Patch that touches more than MAX_FILES files (create, modify and delete all count)."""
+    """Refuse a Patch that touches more than settings.MAX_FILES files (create, modify and delete all count)."""
     count = len(patch["files"])
-    if count > MAX_FILES:
-        return f"patch touches {count} files, the limit is {MAX_FILES}"
+    if count > settings.MAX_FILES:
+        return f"patch touches {count} files, the limit is {settings.MAX_FILES}"
     return None
 
 
@@ -81,15 +81,15 @@ def empties_file(patch, target_dir):
 
 
 def shrinks_too_much(patch, target_dir):
-    """Refuse a modify that cuts a file by more than MAX_SHRINK percent: the model probably left out most of it."""
+    """Refuse a modify that cuts a file by more than settings.MAX_SHRINK percent: the model probably left out most of it."""
     for entry in patch["files"]:
         if entry.get("op") != "modify":
             continue
         old = old_content(entry, target_dir)
         new = entry.get("content") or ""
-        if old.strip() and len(new) < len(old) * (100 - MAX_SHRINK) / 100:
+        if old.strip() and len(new) < len(old) * (100 - settings.MAX_SHRINK) / 100:
             shrink = round(100 - 100 * len(new) / len(old))
-            return f"{entry['path']} would shrink by {shrink} % (limit {MAX_SHRINK} %), send the whole file"
+            return f"{entry['path']} would shrink by {shrink} % (limit {settings.MAX_SHRINK} %), send the whole file"
     return None
 
 
@@ -128,11 +128,52 @@ def stub_function(patch, target_dir):
     return None
 
 
+def is_test_file(path):
+    """A file pytest collects by default: test_*.py or *_test.py."""
+    name = os.path.basename(path.replace("\\", "/"))
+    return name.endswith(".py") and (name.startswith("test_") or name.endswith("_test.py"))
+
+
+def tests_in(text):
+    """{name: code} of every test function, also inside test classes. None if the text does not parse."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return None
+    found = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test"):
+            found[node.name] = ast.dump(node)  # the code without comments and formatting
+    return found
+
+
+def weakens_tests(patch, target_dir):
+    """Refuse a Patch that deletes a test file or removes or changes a test that exists.
+
+    Otherwise the model could make the Validation Command pass by weakening the tests. Adding tests is fine.
+    """
+    for entry in patch["files"]:
+        if not is_test_file(entry["path"]) or not os.path.isfile(os.path.join(target_dir, entry["path"])):
+            continue
+        if entry.get("op") == "delete":
+            return f"the Patch may not delete the test file {entry['path']}"
+        old = tests_in(old_content(entry, target_dir))
+        new = tests_in(entry.get("content") or "")
+        if old is None or new is None:
+            continue  # py_compile in the Validation Command reports broken code better
+        for name in old:
+            if name not in new:
+                return f"the Patch removes the test {name} from {entry['path']}"
+            if new[name] != old[name]:
+                return f"the Patch changes the test {name} in {entry['path']} (add new tests instead)"
+    return None
+
+
 # outside_target must stay first: the rules after it read files from disk and trust the paths are inside.
 # Then the cheap rules that only look at the Patch, then the ones that read files (empties_file before
 # shrinks_too_much, so "replaced by nothing" gets its more specific reason), then the one that parses code.
 RULES = [outside_target, touches_config, targets_folder, too_many_files, has_marker,
-         creates_existing, empties_file, shrinks_too_much, stub_function]
+         creates_existing, weakens_tests, empties_file, shrinks_too_much, stub_function]
 
 
 def check_patch(patch, target_dir):

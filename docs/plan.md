@@ -27,20 +27,36 @@ target/                      Target Project (calculator), mounted as /workspace
   ioc.config.yml             validate: python -m py_compile {files} && python -m pytest -q
   README.md
 
-p1/                          Part 1: Index + Watcher
-  chunker.py                 file → list of Chunks
-  index.py                   Chroma client, reindex_file(), index_all(), watch(), CLI
+Each part has the same layers (ADR-0006): views → services → repositories → models, schemas for views.
 
-p2/                          Part 2: API + RAG (imports p1)
-  search.py                  vector + BM25 over the whole Index, merged with RRF
-  ask.py                     symbol-question router, otherwise KNOWN SYMBOLS + qwen2.5:3b
-  app.py                     FastAPI routes + dashboard
-  static/index.html          five tabs, vanilla JS
+p1/                          Part 1: Index + Watcher, and what every part shares
+  config/settings.py         every setting (env vars + limits), shared
+  core/database.py           the one Chroma client of the process, shared
+  core/llm.py                the only call to Ollama, shared
+  models/                    Chunk, Event (TypedDicts over plain dicts)
+  repositories/              chunk_repository (writes, browses), file_repository (disk), event_repository
+  services/chunker.py        file → list of Chunks
+  services/indexer.py        reindex_file(), index_all()
+  services/watcher.py        watch()
+  services/overview.py       status, files, Chunk pages for the dashboard
+  views/, schemas/           /status /files /file /chunks /events
+  index.py                   console command (index once, --watch)
 
-p3/                          Part 3: Patch Loop (imports the app from p2)
-  sanity.py                  Sanity Checks, one small function each
-  loop.py                    generate → sanity → apply → validate → rollback
-  app.py                     p2 app + POST /patch
+p2/                          Part 2: API + RAG (uses p1)
+  repositories/              search_repository (reads the Index for retrieval)
+  services/search.py         vector + BM25 over the whole Index, merged with RRF
+  services/router.py         symbol-question router
+  services/ask.py            symbol questions from the Index, otherwise KNOWN SYMBOLS + qwen2.5:3b
+  views/, schemas/, models/  /context /ask, dashboard (static/index.html, five tabs, vanilla JS), Answer
+  app.py                     FastAPI app: Part 1 + Part 2 routes, Watcher in a background thread
+
+p3/                          Part 3: Patch Loop (uses p1 and p2)
+  repositories/target_files.py  Snapshot, apply, Rollback
+  services/sanity.py         Sanity Checks, one small function each
+  services/validation.py     the Validation Command
+  services/patch_loop.py     generate → sanity → apply → validate → rollback
+  views/, schemas/, models/  /patch, Patch, Attempt
+  app.py                     the p2 app + /patch
 ```
 
 `.gitignore` covers the Chroma directory, model files, `__pycache__`, and `*.ioc.tmp`. The **Index** and the models only ever live in Docker volumes; nothing large is committed.
@@ -56,7 +72,7 @@ The **Index** lives in `/data/chroma`, outside the **Target Project**, so the **
 
 ## Part 1: Index and Watcher
 
-**Chunking** (`p1/chunker.py`):
+**Chunking** (`p1/services/chunker.py`):
 - Python: `ast`. One **Chunk** per function, async function, class, and method (decorators included), plus one module-header **Chunk** for imports and top-level code. Regex fallback if the file fails to parse.
 - YAML: one **Chunk** per top-level key.
 - Markdown: one **Chunk** per `#` heading.
@@ -90,9 +106,9 @@ The **Index** lives in `/data/chroma`, outside the **Target Project**, so the **
 
 A route that needs the model answers `503` with the reason when Ollama cannot be reached.
 
-**Retrieval** (`p2/search.py`): rank the whole **Index** twice (vector similarity from Chroma and BM25 over the Chroma documents), then merge with Reciprocal Rank Fusion: `score = 1/(60 + vector_rank) + 1/(60 + bm25_rank)`. Chroma stays the canonical store; the BM25 index is rebuilt from it whenever the **Index** changes.
+**Retrieval** (`p2/services/search.py`): rank the whole **Index** twice (vector similarity from Chroma and BM25 over the Chroma documents), then merge with Reciprocal Rank Fusion: `score = 1/(60 + vector_rank) + 1/(60 + bm25_rank)`. Chroma stays the canonical store; the BM25 index is rebuilt from it whenever the **Index** changes.
 
-**Answering** (`p2/ask.py`), single-turn, no conversation history:
+**Answering** (`p2/services/ask.py`), single-turn, no conversation history:
 1. Regex router (English and Russian phrasing): "is there a function X?" and "what functions are in file Y?" are answered straight from **Index** metadata, without calling the LLM ([ADR-0004](./adr/0004-symbol-questions-skip-the-llm.md)).
 2. Every other **Question** goes to `qwen2.5:3b` with the retrieved **Chunks** and a `KNOWN SYMBOLS` block listing the real symbols of the retrieved files. The model may not name symbols outside that list.
 
@@ -107,7 +123,7 @@ A route that needs the model answers `503` with the reason when Ollama cannot be
 
 On later **Attempts** it also receives its previous **Patch** and the failure reason (the last ~40 lines of the validation log, or the **Sanity Check** refusal).
 
-**Sanity Checks** (`p3/sanity.py`), hard refusals before any disk write. Each check is a small function returning a reason or `None`. Reject a **Patch** that:
+**Sanity Checks** (`p3/services/sanity.py`), hard refusals before any disk write. Each check is a small function returning a reason or `None`. Reject a **Patch** that:
 1. contains a `=== FILE:` retrieval marker,
 2. creates a file that already exists,
 3. replaces a non-empty file with `""`, `"None"`, or `"null"`,
@@ -116,7 +132,8 @@ On later **Attempts** it also receives its previous **Patch** and the failure re
 6. touches more than three files,
 7. has a path outside the **Target Project** (absolute paths, `..`),
 8. touches `ioc.config.yml` in any letter case (bind mounts can be case-insensitive), so the model cannot weaken the **Validation Command**,
-9. has a path that is a folder.
+9. has a path that is a folder,
+10. deletes a test file (`test_*.py`, `*_test.py`), or removes or changes a test function that exists (comments and formatting aside), so the model cannot make validation pass by weakening the tests. Adding tests is allowed.
 
 **Apply**: take a **Snapshot** of every file the **Patch** touches (recording files that do not exist yet), write each new content to `<file>.ioc.tmp`, then `os.replace` each one once all temporaries are ready.
 
@@ -128,7 +145,7 @@ On later **Attempts** it also receives its previous **Patch** and the failure re
 
 ## Dashboard
 
-One `p2/static/index.html` with five tabs:
+One `p2/views/static/index.html` with five tabs:
 - **Overview**: status cards, per-file **Chunk** counts, live activity feed from `/events`.
 - **Files**: file content with **Chunk** boundaries marked.
 - **ChromaDB Explorer**: paginated table from `/chunks`.

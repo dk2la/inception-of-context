@@ -3,8 +3,8 @@ import shutil
 
 import pytest
 
-from p3 import sanity
-from p3.sanity import check_patch
+from p3.services import sanity
+from p3.services.sanity import check_patch
 
 
 # --- helpers ---
@@ -384,3 +384,53 @@ def test_ioc_config_in_other_letter_case_is_still_the_config_file(run):
     # on a case-insensitive disk (macOS bind mount) these names are the same file
     for path in ["IOC.config.yml", "./Ioc.Config.YML"]:
         assert "ioc.config.yml" in run(patch_of(modify(path, "validate: true\n")))
+
+
+# --- weakens_tests ---
+
+TEST_CORE = "tests/test_core.py"
+
+
+def read_test_core(project):
+    with open(os.path.join(project, TEST_CORE)) as f:
+        return f.read()
+
+
+def test_deleting_a_test_file_is_refused(run):
+    reason = run({"summary": "", "files": [{"path": TEST_CORE, "op": "delete", "content": ""}]})
+    assert reason == f"the Patch may not delete the test file {TEST_CORE}"
+
+
+def test_removing_a_test_is_refused(run, project):
+    content = read_test_core(project).replace("def test_add_negative():", "def helper_add_negative():")
+    reason = run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]})
+    assert reason == f"the Patch removes the test test_add_negative from {TEST_CORE}"
+
+
+def test_changing_what_a_test_checks_is_refused(run, project):
+    content = read_test_core(project).replace("assert Calculator().add(2, 3) == 5.0", "assert True")
+    reason = run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]})
+    assert reason == f"the Patch changes the test test_add in {TEST_CORE} (add new tests instead)"
+
+
+def test_adding_a_test_and_changing_comments_is_allowed(run, project):
+    content = "# tests of Calculator\n" + read_test_core(project) + "\n\ndef test_power():\n    assert Calculator().power(2, 3) == 8.0\n"
+    assert run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]}) is None
+
+
+def test_creating_a_new_test_file_is_allowed(run):
+    content = "from calculator.core import Calculator\n\n\ndef test_power():\n    assert Calculator().power(2, 3) == 8.0\n"
+    assert run({"summary": "", "files": [{"path": "tests/test_power.py", "op": "create", "content": content}]}) is None
+
+
+@pytest.mark.parametrize("path, expected", [
+    ("tests/test_core.py", True), ("core_test.py", True), ("calculator/core.py", False),
+    ("tests/conftest.py", False), ("test_notes.md", False),
+])
+def test_is_test_file(path, expected):
+    assert sanity.is_test_file(path) is expected
+
+
+def test_a_test_file_that_does_not_parse_is_left_to_the_validation_command(run, project):
+    content = read_test_core(project) + "\ndef test_broken(:\n"
+    assert run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]}) is None
