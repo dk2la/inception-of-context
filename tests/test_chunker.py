@@ -1,15 +1,15 @@
 import os
 
-from p1.models.chunk import make_chunk
-from p1.repositories.file_repository import is_skipped, read_text
-from p1.services.chunker import chunk_by_regex, chunk_file, chunk_markdown, chunk_python, chunk_yaml
+from p1.models.chunk import chunk_factory
+from p1.repositories.file_repository import file_repository
+from p1.services.chunker import chunker_service
 
 
-# --- make_chunk ---
+# --- chunk_factory.make_chunk ---
 
 
 def test_make_chunk_has_exactly_the_seven_keys():
-    chunk = make_chunk("a.py", 1, 2, "f", "function", "def f():\n    pass")
+    chunk = chunk_factory.make_chunk("a.py", 1, 2, "f", "function", "def f():\n    pass")
     assert chunk == {
         "path": "a.py",
         "start_line": 1,
@@ -23,9 +23,9 @@ def test_make_chunk_has_exactly_the_seven_keys():
 
 
 def test_hash_depends_only_on_text():
-    a = make_chunk("a.py", 1, 1, "f", "function", "x = 1")
-    b = make_chunk("b.py", 9, 9, "g", "module", "x = 1")
-    c = make_chunk("a.py", 1, 1, "f", "function", "x = 2")
+    a = chunk_factory.make_chunk("a.py", 1, 1, "f", "function", "x = 1")
+    b = chunk_factory.make_chunk("b.py", 9, 9, "g", "module", "x = 1")
+    c = chunk_factory.make_chunk("a.py", 1, 1, "f", "function", "x = 2")
     assert a["hash"] == b["hash"]
     assert a["hash"] != c["hash"]
 
@@ -47,7 +47,7 @@ def functions_only(chunks):
 
 
 def test_one_chunk_per_top_level_function():
-    chunks = functions_only(chunk_python("main.py", TWO_FUNCTIONS))
+    chunks = functions_only(chunker_service.chunk_python("main.py", TWO_FUNCTIONS))
     assert [(c["name"], c["kind"], c["start_line"], c["end_line"]) for c in chunks] == [
         ("hello", "function", 3, 4),
         ("fetch", "async_function", 6, 7),
@@ -57,20 +57,20 @@ def test_one_chunk_per_top_level_function():
 
 
 def test_empty_text_gives_no_chunks():
-    assert chunk_python("a.py", "") == []
-    assert chunk_python("a.py", "  \n\n") == []
+    assert chunker_service.chunk_python("a.py", "") == []
+    assert chunker_service.chunk_python("a.py", "  \n\n") == []
 
 
 def test_multiline_signature_is_one_chunk():
     text = "def add(\n    a,\n    b,\n):\n    return a + b\n"
-    [chunk] = chunk_python("a.py", text)
+    [chunk] = chunker_service.chunk_python("a.py", text)
     assert (chunk["start_line"], chunk["end_line"]) == (1, 5)
     assert "    b,\n):" in chunk["text"]
 
 
 def test_nested_function_is_not_a_chunk():
     text = "def outer():\n    def inner():\n        pass\n    return inner\n"
-    chunks = chunk_python("a.py", text)
+    chunks = chunker_service.chunk_python("a.py", text)
     assert [c["name"] for c in chunks] == ["outer"]
 
 
@@ -90,7 +90,7 @@ def summary(chunks):
 
 
 def test_class_and_its_methods_are_chunks():
-    assert summary(chunk_python("a.py", CALCULATOR)) == [
+    assert summary(chunker_service.chunk_python("a.py", CALCULATOR)) == [
         ("Calculator", "class", 1, 6),
         ("Calculator.add", "method", 2, 3),
         ("Calculator.subtract", "method", 5, 6),
@@ -98,22 +98,22 @@ def test_class_and_its_methods_are_chunks():
 
 
 def test_method_text_is_exactly_its_own_lines():
-    method = chunk_python("a.py", CALCULATOR)[1]
+    method = chunker_service.chunk_python("a.py", CALCULATOR)[1]
     assert method["text"] == "    def add(self, a, b):\n        return a + b"
 
 
 def test_class_without_methods_is_one_chunk():
-    assert summary(chunk_python("a.py", "class Empty:\n    pass\n")) == [("Empty", "class", 1, 2)]
+    assert summary(chunker_service.chunk_python("a.py", "class Empty:\n    pass\n")) == [("Empty", "class", 1, 2)]
 
 
 def test_async_method_is_a_method():
     text = "class A:\n    async def run(self):\n        pass\n"
-    assert summary(chunk_python("a.py", text))[1] == ("A.run", "method", 2, 3)
+    assert summary(chunker_service.chunk_python("a.py", text))[1] == ("A.run", "method", 2, 3)
 
 
 def test_chunks_follow_file_order():
     text = CALCULATOR + "\n\ndef helper():\n    pass\n"
-    names = [c["name"] for c in chunk_python("a.py", text)]
+    names = [c["name"] for c in chunker_service.chunk_python("a.py", text)]
     assert names == ["Calculator", "Calculator.add", "Calculator.subtract", "helper"]
 
 
@@ -122,20 +122,20 @@ def test_chunks_follow_file_order():
 
 def test_decorator_is_part_of_the_function_chunk():
     text = "@staticmethod\ndef square(x):\n    return x * x\n"
-    [chunk] = chunk_python("a.py", text)
+    [chunk] = chunker_service.chunk_python("a.py", text)
     assert (chunk["start_line"], chunk["end_line"]) == (1, 3)
     assert chunk["text"].startswith("@staticmethod")
 
 
 def test_chunk_starts_at_the_topmost_decorator():
     text = "@one\n@two(\n    1,\n)\ndef f():\n    pass\n"
-    [chunk] = chunk_python("a.py", text)
+    [chunk] = chunker_service.chunk_python("a.py", text)
     assert chunk["start_line"] == 1
 
 
 def test_decorated_class_and_method():
     text = "@dataclass\nclass Point:\n    @property\n    def x(self):\n        return 1\n"
-    assert summary(chunk_python("a.py", text)) == [
+    assert summary(chunker_service.chunk_python("a.py", text)) == [
         ("Point", "class", 1, 5),
         ("Point.x", "method", 3, 5),
     ]
@@ -157,7 +157,7 @@ if __name__ == "__main__":
 
 
 def test_module_header_is_first_and_holds_top_level_code():
-    header = chunk_python("main.py", MAIN)[0]
+    header = chunker_service.chunk_python("main.py", MAIN)[0]
     assert (header["name"], header["kind"]) == ("<module>", "module")
     assert (header["start_line"], header["end_line"]) == (1, 10)
     assert "import sys" in header["text"]
@@ -167,17 +167,17 @@ def test_module_header_is_first_and_holds_top_level_code():
 
 
 def test_no_module_header_when_only_a_function():
-    assert [c["kind"] for c in chunk_python("a.py", "def f():\n    pass\n")] == ["function"]
+    assert [c["kind"] for c in chunker_service.chunk_python("a.py", "def f():\n    pass\n")] == ["function"]
 
 
 def test_module_header_of_a_single_import():
-    [header] = chunk_python("a.py", "import os\n")
+    [header] = chunker_service.chunk_python("a.py", "import os\n")
     assert (header["name"], header["start_line"], header["end_line"]) == ("<module>", 1, 1)
 
 
 def test_decorator_and_method_lines_stay_out_of_the_module_header():
     text = "import os\n\n@deco\ndef f():\n    pass\n\nclass A:\n    def m(self):\n        pass\n"
-    header = chunk_python("a.py", text)[0]
+    header = chunker_service.chunk_python("a.py", text)[0]
     assert header["text"] == "import os"
 
 
@@ -195,7 +195,7 @@ function clean() {
 
 
 def test_regex_cuts_at_definition_lines():
-    assert summary(chunk_by_regex("run.sh", SHELL)) == [
+    assert summary(chunker_service.chunk_by_regex("run.sh", SHELL)) == [
         ("<module>", "module", 1, 2),
         ("build", "definition", 3, 5),
         ("clean", "definition", 6, 8),
@@ -203,26 +203,26 @@ def test_regex_cuts_at_definition_lines():
 
 
 def test_regex_without_module_part():
-    chunks = chunk_by_regex("a.txt", "def a():\n    pass\ndef b():\n    pass")
+    chunks = chunker_service.chunk_by_regex("a.txt", "def a():\n    pass\ndef b():\n    pass")
     assert summary(chunks) == [("a", "definition", 1, 2), ("b", "definition", 3, 4)]
 
 
 def test_regex_without_definitions_is_one_module_chunk():
-    assert summary(chunk_by_regex("a.txt", "hello\nworld")) == [("<module>", "module", 1, 2)]
+    assert summary(chunker_service.chunk_by_regex("a.txt", "hello\nworld")) == [("<module>", "module", 1, 2)]
 
 
 def test_regex_on_empty_or_blank_text():
-    assert chunk_by_regex("a.txt", "") == []
-    assert chunk_by_regex("a.txt", "\n  \n") == []
+    assert chunker_service.chunk_by_regex("a.txt", "") == []
+    assert chunker_service.chunk_by_regex("a.txt", "\n  \n") == []
 
 
 def test_regex_recognises_indented_defs_and_classes():
-    chunks = chunk_by_regex("a.py", "class Foo:\n    def run(self):\n        pass\n")
+    chunks = chunker_service.chunk_by_regex("a.py", "class Foo:\n    def run(self):\n        pass\n")
     assert [c["name"] for c in chunks] == ["Foo", "run"]
 
 
 def test_regex_leaves_out_blank_lines_at_the_edges_of_a_chunk():
-    chunks = chunk_by_regex("a.txt", "def a():\n    pass\n\n\ndef b():\n    pass\n")
+    chunks = chunker_service.chunk_by_regex("a.txt", "def a():\n    pass\n\n\ndef b():\n    pass\n")
     assert summary(chunks) == [("a", "definition", 1, 2), ("b", "definition", 5, 6)]
 
 
@@ -230,21 +230,21 @@ def test_regex_leaves_out_blank_lines_at_the_edges_of_a_chunk():
 
 
 def test_broken_python_falls_back_to_regex():
-    chunks = chunk_python("a.py", "def add(a, b:\n    return a + b\n")
+    chunks = chunker_service.chunk_python("a.py", "def add(a, b:\n    return a + b\n")
     assert [(c["name"], c["kind"]) for c in chunks] == [("add", "definition")]
 
 
 def test_broken_class_is_still_indexed():
-    chunks = chunk_python("a.py", "class Broken\n    def run(self):\n        pass\n")
+    chunks = chunker_service.chunk_python("a.py", "class Broken\n    def run(self):\n        pass\n")
     assert [(c["name"], c["kind"]) for c in chunks] == [("Broken", "definition"), ("run", "definition")]
 
 
 def test_null_byte_does_not_crash():
-    assert chunk_python("a.py", "x = 1\x00\n")
+    assert chunker_service.chunk_python("a.py", "x = 1\x00\n")
 
 
 def test_valid_python_does_not_use_the_fallback():
-    assert chunk_python("a.py", "def f():\n    pass\n")[0]["kind"] == "function"
+    assert chunker_service.chunk_python("a.py", "def f():\n    pass\n")[0]["kind"] == "function"
 
 
 # --- YAML ---
@@ -260,7 +260,7 @@ ports:
 
 
 def test_yaml_one_chunk_per_top_level_key():
-    assert summary(chunk_yaml("a.yml", YAML)) == [
+    assert summary(chunker_service.chunk_yaml("a.yml", YAML)) == [
         ("validate", "yaml_key", 2, 2),
         ("services", "yaml_key", 3, 5),
         ("ports", "yaml_key", 6, 7),
@@ -268,23 +268,23 @@ def test_yaml_one_chunk_per_top_level_key():
 
 
 def test_yaml_nested_key_with_the_same_name_is_not_a_chunk():
-    assert summary(chunk_yaml("a.yml", "a:\n  a: 1\n")) == [("a", "yaml_key", 1, 2)]
+    assert summary(chunker_service.chunk_yaml("a.yml", "a:\n  a: 1\n")) == [("a", "yaml_key", 1, 2)]
 
 
 def test_yaml_list_is_one_module_chunk():
-    assert summary(chunk_yaml("a.yml", "- a\n- b\n")) == [("<module>", "module", 1, 2)]
+    assert summary(chunker_service.chunk_yaml("a.yml", "- a\n- b\n")) == [("<module>", "module", 1, 2)]
 
 
 def test_yaml_empty_and_comment_only():
-    assert chunk_yaml("a.yml", "") == []
-    assert chunk_yaml("a.yml", "# just a comment\n") == [
-        make_chunk("a.yml", 1, 1, "<module>", "module", "# just a comment")
+    assert chunker_service.chunk_yaml("a.yml", "") == []
+    assert chunker_service.chunk_yaml("a.yml", "# just a comment\n") == [
+        chunk_factory.make_chunk("a.yml", 1, 1, "<module>", "module", "# just a comment")
     ]
 
 
 def test_yaml_real_config(real_target):
     with open(os.path.join(real_target, "ioc.config.yml")) as f:
-        [chunk] = chunk_yaml("ioc.config.yml", f.read())
+        [chunk] = chunker_service.chunk_yaml("ioc.config.yml", f.read())
     assert chunk["name"] == "validate"
     assert "pytest" in chunk["text"]
 
@@ -303,7 +303,7 @@ python main.py 2 + 3
 
 
 def test_markdown_one_chunk_per_heading_and_code_fences_are_not_headings():
-    assert summary(chunk_markdown("README.md", MARKDOWN)) == [
+    assert summary(chunker_service.chunk_markdown("README.md", MARKDOWN)) == [
         ("<module>", "module", 1, 1),
         ("Calculator", "heading", 2, 3),
         ("Usage", "heading", 4, 8),
@@ -311,30 +311,30 @@ def test_markdown_one_chunk_per_heading_and_code_fences_are_not_headings():
 
 
 def test_markdown_adjacent_headings():
-    chunks = chunk_markdown("a.md", "# A\ntext\n# B\nmore")
+    chunks = chunker_service.chunk_markdown("a.md", "# A\ntext\n# B\nmore")
     assert summary(chunks) == [("A", "heading", 1, 2), ("B", "heading", 3, 4)]
 
 
 def test_markdown_plain_text_and_empty():
-    assert summary(chunk_markdown("a.md", "plain text only")) == [("<module>", "module", 1, 1)]
-    assert chunk_markdown("a.md", "") == []
+    assert summary(chunker_service.chunk_markdown("a.md", "plain text only")) == [("<module>", "module", 1, 1)]
+    assert chunker_service.chunk_markdown("a.md", "") == []
 
 
 def test_markdown_deep_heading_name():
-    assert chunk_markdown("a.md", "### Deep heading")[0]["name"] == "Deep heading"
+    assert chunker_service.chunk_markdown("a.md", "### Deep heading")[0]["name"] == "Deep heading"
 
 
 def test_markdown_real_readme(real_target):
     with open(os.path.join(real_target, "README.md")) as f:
-        chunks = chunk_markdown("README.md", f.read())
+        chunks = chunker_service.chunk_markdown("README.md", f.read())
     assert [c for c in chunks if c["kind"] == "heading"]
 
 
-# --- chunk_file picks the chunker ---
+# --- chunker_service.chunk_file picks the chunker ---
 
 
 def first_kind(path, text):
-    return chunk_file(path, text)[0]["kind"]
+    return chunker_service.chunk_file(path, text)[0]["kind"]
 
 
 def test_chunk_file_chooses_by_extension():
@@ -353,12 +353,12 @@ def test_every_file_of_the_real_target_can_be_chunked(real_target):
         for name in names:
             path = os.path.join(folder, name)
             with open(path) as f:
-                chunk_file(os.path.relpath(path, real_target), f.read())
+                chunker_service.chunk_file(os.path.relpath(path, real_target), f.read())
 
 
 def test_real_calculator_has_four_methods(real_target):
     with open(os.path.join(real_target, "calculator", "core.py")) as f:
-        chunks = chunk_file("calculator/core.py", f.read())
+        chunks = chunker_service.chunk_file("calculator/core.py", f.read())
     methods = [c["name"] for c in chunks if c["kind"] == "method"]
     assert methods == ["Calculator.add", "Calculator.subtract", "Calculator.multiply", "Calculator.divide"]
 
@@ -368,23 +368,23 @@ def test_real_calculator_has_four_methods(real_target):
 
 def test_normal_source_files_are_not_skipped():
     for path in ["calculator/core.py", "main.py", "build.py", "docs/building.md", "ioc.config.yml"]:
-        assert not is_skipped(path), path
+        assert not file_repository.is_skipped(path), path
 
 
 def test_tool_folders_are_skipped_at_any_depth():
     for path in ["venv/lib/site.py", "a/b/node_modules/x.js", ".git/config", "dist/x.py",
                  "build/x.py", ".venv/bin/x", "calculator/__pycache__/core.cpython-312.pyc"]:
-        assert is_skipped(path), path
+        assert file_repository.is_skipped(path), path
 
 
 def test_hidden_files_and_temporary_files_are_skipped():
-    assert is_skipped(".env")
-    assert is_skipped(".pytest_cache/README.md")
-    assert is_skipped("calculator/core.py.ioc.tmp")
+    assert file_repository.is_skipped(".env")
+    assert file_repository.is_skipped(".pytest_cache/README.md")
+    assert file_repository.is_skipped("calculator/core.py.ioc.tmp")
 
 
 def test_leading_dot_slash_is_not_a_hidden_folder():
-    assert not is_skipped("./main.py")
+    assert not file_repository.is_skipped("./main.py")
 
 
 # --- reading text ---
@@ -393,32 +393,32 @@ def test_leading_dot_slash_is_not_a_hidden_folder():
 def test_read_text_returns_text_as_written(tmp_path):
     (tmp_path / "a.py").write_text('print("hi")')
     (tmp_path / "ru.txt").write_text("привет", encoding="utf-8")
-    assert read_text(str(tmp_path / "a.py")) == 'print("hi")'
-    assert read_text(str(tmp_path / "ru.txt")) == "привет"
+    assert file_repository.read_text(str(tmp_path / "a.py")) == 'print("hi")'
+    assert file_repository.read_text(str(tmp_path / "ru.txt")) == "привет"
 
 
 def test_read_text_empty_file_is_an_empty_string(tmp_path):
     (tmp_path / "empty.py").write_text("")
-    assert read_text(str(tmp_path / "empty.py")) == ""
+    assert file_repository.read_text(str(tmp_path / "empty.py")) == ""
 
 
 def test_read_text_refuses_binary_files(tmp_path):
     (tmp_path / "logo.png").write_bytes(b"\x89PNG\x00\x00data")
     (tmp_path / "latin.txt").write_bytes(b"\xff\xfe\xfd")
-    assert read_text(str(tmp_path / "logo.png")) is None
-    assert read_text(str(tmp_path / "latin.txt")) is None
+    assert file_repository.read_text(str(tmp_path / "logo.png")) is None
+    assert file_repository.read_text(str(tmp_path / "latin.txt")) is None
 
 
 def test_read_text_missing_file_and_directory(tmp_path):
-    assert read_text(str(tmp_path / "nope.py")) is None
-    assert read_text(str(tmp_path)) is None
+    assert file_repository.read_text(str(tmp_path / "nope.py")) is None
+    assert file_repository.read_text(str(tmp_path)) is None
 
 
 def test_blank_lines_at_the_end_of_a_section_are_left_out():
-    chunks = chunk_markdown("notes.md", "# A\ntext\n\n\n# B\nmore\n")
+    chunks = chunker_service.chunk_markdown("notes.md", "# A\ntext\n\n\n# B\nmore\n")
     assert [(c["name"], c["start_line"], c["end_line"]) for c in chunks] == [("A", 1, 2), ("B", 5, 6)]
 
 
 def test_blank_lines_at_the_start_of_a_section_are_left_out():
-    chunks = chunk_markdown("notes.md", "\n\nintro\n# A\ntext\n")
+    chunks = chunker_service.chunk_markdown("notes.md", "\n\nintro\n# A\ntext\n")
     assert [(c["name"], c["start_line"], c["end_line"]) for c in chunks] == [("<module>", 3, 3), ("A", 4, 5)]

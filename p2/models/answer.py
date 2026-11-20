@@ -8,5 +8,9 @@ class Answer(TypedDict):
     used_llm: bool  # False when it came from the Index alone (symbol questions, empty Index)
 
 
-def make_answer(answer, sources, used_llm):
-    return {"answer": answer, "sources": sources, "used_llm": used_llm}
+class AnswerFactory:
+    def make_answer(self, answer, sources, used_llm):
+        return {"answer": answer, "sources": sources, "used_llm": used_llm}
+
+
+answer_factory = AnswerFactory()

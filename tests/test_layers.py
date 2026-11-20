@@ -89,7 +89,7 @@ def test_all_source_files_are_inside_p1_p2_p3():
 
 def test_only_core_database_talks_to_chroma():
     users = [p for p in files_of(*PARTS) if "chromadb" in p.read_text()]
-    assert [p.relative_to(ROOT).as_posix() for p in users] == ["p1/core/database.py"]
+    assert [p.relative_to(ROOT).as_posix() for p in users] == ["p1/core/chroma_db.py"]
 
 
 def test_only_core_llm_talks_to_the_model():

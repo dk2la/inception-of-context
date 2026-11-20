@@ -26,7 +26,11 @@ class Attempt(TypedDict):
     validation: Optional[dict]  # {ok, log}
 
 
-def new_attempt(number):
-    """An Attempt where nothing has happened yet."""
-    return {"number": number, "ok": False, "error": None, "patch": None,
-            "generation": None, "sanity": None, "apply": None, "validation": None}
+class AttemptFactory:
+    def new_attempt(self, number):
+        """An Attempt where nothing has happened yet."""
+        return {"number": number, "ok": False, "error": None, "patch": None,
+                "generation": None, "sanity": None, "apply": None, "validation": None}
+
+
+attempt_factory = AttemptFactory()

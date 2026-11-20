@@ -28,16 +28,17 @@ target/                      Target Project (calculator), mounted as /workspace
   README.md
 
 Each part has the same layers (ADR-0006): views → services → repositories → models, schemas for views.
+Every module is one class plus its one object at the end (`chunker_service = ChunkerService(chunk_factory)`).
 
 p1/                          Part 1: Index + Watcher, and what every part shares
   config/settings.py         every setting (env vars + limits), shared
-  core/database.py           the one Chroma client of the process, shared
+  core/chroma_db.py          ChromaDB: the one Chroma client of the process, shared
   core/llm.py                the only call to Ollama, shared
   models/                    Chunk, Event (TypedDicts over plain dicts)
   repositories/              chunk_repository (writes, browses), file_repository (disk), event_repository
   services/chunker.py        file → list of Chunks
-  services/indexer.py        reindex_file(), index_all()
-  services/watcher.py        watch()
+  services/indexer.py        IndexerService: reindex_file(), index_all()
+  services/watcher.py        WatcherService: watch(), on_any_event()
   services/overview.py       status, files, Chunk pages for the dashboard
   views/, schemas/           /status /files /file /chunks /events
   index.py                   console command (index once, --watch)

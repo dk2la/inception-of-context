@@ -1,7 +1,7 @@
 import os
 
-from p1.core import database
-from p1.services import indexer
+from p1.core.chroma_db import chroma_db
+from p1.services.indexer import indexer_service
 
 
 def write(target, name, text):
@@ -30,13 +30,13 @@ def test_files_are_sorted_by_path(client):
 
 def test_files_chunk_counts_add_up_to_the_whole_index(client):
     total = sum(item["chunks"] for item in client.get("/files").json())
-    assert total == database.get_collection().count()
+    assert total == chroma_db.get_collection().count()
 
 
 def test_files_never_lists_skipped_paths(client, temp_index):
     write(temp_index, "__pycache__/x.py", "def x():\n    pass\n")
     write(temp_index, ".hidden.py", "def h():\n    pass\n")
-    indexer.index_all()
+    indexer_service.index_all()
     for item in client.get("/files").json():
         assert "__pycache__" not in item["path"]
         assert not item["path"].startswith(".")
@@ -44,15 +44,15 @@ def test_files_never_lists_skipped_paths(client, temp_index):
 
 def test_files_follows_the_index_when_a_file_is_added_and_deleted(client, temp_index):
     path = write(temp_index, "extra.md", "# One\ntext\n\n# Two\nmore text\n")
-    indexer.reindex_file(path)  # what the Watcher does
+    indexer_service.reindex_file(path)  # what the Watcher does
     assert {"path": "extra.md", "chunks": 2} in client.get("/files").json()
     os.remove(path)
-    indexer.reindex_file(path)
+    indexer_service.reindex_file(path)
     assert "extra.md" not in [item["path"] for item in client.get("/files").json()]
 
 
 def test_files_of_an_empty_index_is_an_empty_list(client):
-    database.get_collection().delete(where={"path": {"$ne": ""}})
+    chroma_db.get_collection().delete(where={"path": {"$ne": ""}})
     assert client.get("/files").json() == []
 
 
@@ -114,7 +114,7 @@ def test_file_without_a_path_parameter_is_422(client):
 def test_chunks_first_page_has_the_documented_shape(client):
     body = client.get("/chunks").json()
     assert (body["offset"], body["limit"]) == (0, 50)
-    assert body["total"] == database.get_collection().count()
+    assert body["total"] == chroma_db.get_collection().count()
     assert len(body["items"]) == min(50, body["total"])
     for item in body["items"]:
         assert set(item) == {"id", "path", "start_line", "end_line", "name", "kind", "text"}

@@ -8,39 +8,47 @@ import threading
 
 from fastapi import FastAPI
 
-from p1.config import settings
-from p1.services import indexer
-from p1.services import watcher
-from p1.views import events, overview
-from p2.views import dashboard, questions
-from p2.views.errors import add_error_handlers
-
-OBSERVER = None  # the running Watcher, so the shutdown code can stop it
-
-
-def start_indexing():
-    """Catch up with the Target Project, then start the Watcher. Runs in a background thread."""
-    global OBSERVER
-    try:
-        print(f"indexing {settings.TARGET_DIR} ...")
-        print(f"indexed {indexer.index_all()} chunks")
-        OBSERVER = watcher.watch()
-    except Exception as error:
-        print(f"indexing failed: {error}")
+from p1.config.settings import settings
+from p1.services.indexer import indexer_service
+from p1.services.watcher import watcher_service
+from p1.views.events import events_view
+from p1.views.overview import overview_view
+from p2.views.dashboard import dashboard_view
+from p2.views.errors import error_handlers
+from p2.views.questions import questions_view
 
 
-@contextlib.asynccontextmanager
-async def lifespan(app):
-    global OBSERVER
-    threading.Thread(target=start_indexing, daemon=True).start()  # a thread, so requests are answered meanwhile
-    yield
-    if OBSERVER:
-        OBSERVER.stop()
-        OBSERVER.join()
-        OBSERVER = None
+class Lifecycle:
+    """Indexing at startup and the Watcher, which runs until the server stops."""
+
+    def __init__(self, settings, indexer_service, watcher_service):
+        self.settings = settings
+        self.indexer_service = indexer_service
+        self.watcher_service = watcher_service
+        self.observer = None  # the running Watcher, so the shutdown code can stop it
+
+    def start_indexing(self):
+        """Catch up with the Target Project, then start the Watcher. Runs in a background thread."""
+        try:
+            print(f"indexing {self.settings.TARGET_DIR} ...")
+            print(f"indexed {self.indexer_service.index_all()} chunks")
+            self.observer = self.watcher_service.watch()
+        except Exception as error:
+            print(f"indexing failed: {error}")
+
+    @contextlib.asynccontextmanager
+    async def lifespan(self, app):
+        threading.Thread(target=self.start_indexing, daemon=True).start()  # a thread, so requests are answered meanwhile
+        yield
+        if self.observer:
+            self.observer.stop()
+            self.observer.join()
+            self.observer = None
 
 
-app = FastAPI(title="Inception-of-Context", lifespan=lifespan)
-for view in (overview, events, questions, dashboard):
+lifecycle = Lifecycle(settings, indexer_service, watcher_service)
+
+app = FastAPI(title="Inception-of-Context", lifespan=lifecycle.lifespan)
+for view in (overview_view, events_view, questions_view, dashboard_view):
     app.include_router(view.router)
-add_error_handlers(app)
+error_handlers.add_error_handlers(app)

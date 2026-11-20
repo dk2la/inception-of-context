@@ -2,7 +2,7 @@
 
     uvicorn p3.app:app
 """
-from p3.views import patch
+from p3.views.patch import patch_view
 from p2.app import app
 
-app.include_router(patch.router)
+app.include_router(patch_view.router)

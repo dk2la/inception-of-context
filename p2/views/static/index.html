@@ -1420,7 +1420,7 @@ const GLYPHS = {
 const EXPLAIN = {
   "p1-codebase": ["target/  →  /workspace", "The Target Project: the calculator the system reads, answers about and patches. Mounted into the container."],
   "p1-chunker": ["p1/services/chunker.py", "Splits every file into Chunks: Python by ast (one per function, class and method), other text by lines. Each Chunk keeps its path, lines, name and kind."],
-  "p1-embedder": ["p1/core/database.py", "all-MiniLM-L6-v2, Chroma's built-in ONNX embedder. Runs locally and offline and turns every Chunk into a vector of 384 numbers."],
+  "p1-embedder": ["p1/core/chroma_db.py", "all-MiniLM-L6-v2, Chroma's built-in ONNX embedder. Runs locally and offline and turns every Chunk into a vector of 384 numbers."],
   "p1-chroma": ["p1/repositories/chunk_repository.py", "ChromaDB on a Docker volume, cosine distance: the Index. One record per Chunk, kept between restarts."],
   "p1-watcher": ["p1/services/watcher.py", "watchdog. A create, change, delete or move reindexes just that file and pushes an event to /events (SSE)."],
   "p2-question": ["p2/views/questions.py", "POST /ask and POST /context. The question arrives as plain text, in any language."],

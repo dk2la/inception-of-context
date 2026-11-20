@@ -1,7 +1,7 @@
 """Part 1: the Index and the Watcher, plus what every part shares.
 
     config/        settings.py: every setting
-    core/          database.py (the one Chroma client), llm.py (the only call to the model)
+    core/          chroma_db.py (the one Chroma client), llm.py (the only call to the model)
 
     models/        Chunk, Event
     schemas/       response bodies of the Part 1 routes

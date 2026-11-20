@@ -1,12 +1,12 @@
-from p1.config import settings
-from p1.core import database
+from p1.config.settings import settings
+from p1.core.chroma_db import chroma_db
 
 
 def test_status_reports_real_values(client, temp_index):
     response = client.get("/status")
     assert response.status_code == 200
     assert response.json() == {
-        "chunks": database.get_collection().count(),
+        "chunks": chroma_db.get_collection().count(),
         "target_dir": temp_index,
         "chroma_dir": settings.CHROMA_DIR,
         "embedding_model": "all-MiniLM-L6-v2",
@@ -29,5 +29,5 @@ def test_status_reads_its_values_at_request_time(client, monkeypatch):
 
 def test_status_chunk_count_follows_the_index(client):
     before = client.get("/status").json()["chunks"]
-    database.get_collection().delete(where={"path": "calculator/core.py"})
+    chroma_db.get_collection().delete(where={"path": "calculator/core.py"})
     assert client.get("/status").json()["chunks"] < before

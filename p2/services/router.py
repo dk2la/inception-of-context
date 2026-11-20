@@ -33,15 +33,19 @@ FILE_FUNCTIONS_PATTERNS = [
 ]
 
 
-def route_question(question):
-    """Recognise a symbol question: ("has_function", name), ("file_functions", filename) or None.
+class RouterService:
+    def route_question(self, question):
+        """Recognise a symbol question: ("has_function", name), ("file_functions", filename) or None.
 
-    None means any other Question, which goes to the model.
-    """
-    question = question.strip()
-    for kind, patterns in [("has_function", HAS_FUNCTION_PATTERNS), ("file_functions", FILE_FUNCTIONS_PATTERNS)]:
-        for pattern in patterns:
-            match = re.search(pattern, question, re.IGNORECASE)
-            if match:
-                return kind, match.group(1)
-    return None
+        None means any other Question, which goes to the model.
+        """
+        question = question.strip()
+        for kind, patterns in [("has_function", HAS_FUNCTION_PATTERNS), ("file_functions", FILE_FUNCTIONS_PATTERNS)]:
+            for pattern in patterns:
+                match = re.search(pattern, question, re.IGNORECASE)
+                if match:
+                    return kind, match.group(1)
+        return None
+
+
+router_service = RouterService()

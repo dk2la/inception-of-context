@@ -4,39 +4,39 @@ import time
 
 import pytest
 
-from p1.config import settings
-from p1.core import database
-from p1 import index as p1_index
-from p1.repositories import event_repository
-from p1.services import indexer
-from p1.services import watcher
+from p1.config.settings import settings
+from p1.core.chroma_db import chroma_db
+from p1.index import index_command
+from p1.repositories.event_repository import event_repository
+from p1.services.indexer import indexer_service
+from p1.services.watcher import watcher_service
 
 
 # --- the event list ---
 
 
 def test_add_event_appends_an_event_with_the_time_it_happened(monkeypatch):
-    monkeypatch.setattr(event_repository, "EVENTS", [])
+    monkeypatch.setattr(event_repository, "events", [])
     before = time.time()
     event_repository.add_event("indexed", "a.py", 3)
-    assert len(event_repository.EVENTS) == 1
-    event = event_repository.EVENTS[0]
+    assert len(event_repository.events) == 1
+    event = event_repository.events[0]
     assert (event["type"], event["path"], event["chunks"]) == ("indexed", "a.py", 3)
     assert before <= event["time"] <= time.time()
 
 
 def test_events_keep_the_order_they_were_added_in(monkeypatch):
-    monkeypatch.setattr(event_repository, "EVENTS", [])
+    monkeypatch.setattr(event_repository, "events", [])
     event_repository.add_event("indexed", "a.py", 1)
     event_repository.add_event("deleted", "a.py", 0)
-    assert [(e["type"], e["chunks"]) for e in event_repository.EVENTS] == [("indexed", 1), ("deleted", 0)]
+    assert [(e["type"], e["chunks"]) for e in event_repository.events] == [("indexed", 1), ("deleted", 0)]
 
 
 def test_add_event_refuses_an_unknown_type(monkeypatch):
-    monkeypatch.setattr(event_repository, "EVENTS", [])
+    monkeypatch.setattr(event_repository, "events", [])
     with pytest.raises(ValueError):
         event_repository.add_event("changed", "a.py", 1)
-    assert event_repository.EVENTS == []
+    assert event_repository.events == []
 
 
 # --- watch(): slower tests that use the real filesystem and wait for its events ---
@@ -61,17 +61,17 @@ def write(target, name, text):
 
 def happened(type, path):
     """True once the Watcher has recorded this kind of event for this path."""
-    return any(e["type"] == type and e["path"] == path for e in event_repository.EVENTS)
+    return any(e["type"] == type and e["path"] == path for e in event_repository.events)
 
 
 def chunks_of(path):
-    return database.get_collection().get(where={"path": path})["ids"]
+    return chroma_db.get_collection().get(where={"path": path})["ids"]
 
 
 def test_watcher_indexes_a_new_file(temp_index, monkeypatch):
     """Slower test: real filesystem events."""
-    monkeypatch.setattr(event_repository, "EVENTS", [])
-    observer = watcher.watch()
+    monkeypatch.setattr(event_repository, "events", [])
+    observer = watcher_service.watch()
     try:
         write(temp_index, "a.py", "def a():\n    return 1\n")
         assert wait_until(lambda: happened("indexed", "a.py"))
@@ -83,13 +83,13 @@ def test_watcher_indexes_a_new_file(temp_index, monkeypatch):
 
 def test_watcher_reindexes_an_edited_file(temp_index, monkeypatch):
     """Slower test: real filesystem events."""
-    monkeypatch.setattr(event_repository, "EVENTS", [])
+    monkeypatch.setattr(event_repository, "events", [])
     write(temp_index, "a.py", "def a():\n    return 1\n")
-    indexer.index_all()
-    observer = watcher.watch()
+    indexer_service.index_all()
+    observer = watcher_service.watch()
     try:
         write(temp_index, "a.py", "def a():\n    return 1\n\n\ndef b():\n    return 2\n")
-        assert wait_until(lambda: any(e["path"] == "a.py" and e["chunks"] == 2 for e in event_repository.EVENTS))
+        assert wait_until(lambda: any(e["path"] == "a.py" and e["chunks"] == 2 for e in event_repository.events))
         assert len(chunks_of("a.py")) == 2
     finally:
         observer.stop()
@@ -98,15 +98,15 @@ def test_watcher_reindexes_an_edited_file(temp_index, monkeypatch):
 
 def test_watcher_removes_the_chunks_of_a_deleted_file(temp_index, monkeypatch):
     """Slower test: real filesystem events."""
-    monkeypatch.setattr(event_repository, "EVENTS", [])
+    monkeypatch.setattr(event_repository, "events", [])
     path = write(temp_index, "a.py", "def a():\n    return 1\n")
-    indexer.index_all()
-    observer = watcher.watch()
+    indexer_service.index_all()
+    observer = watcher_service.watch()
     try:
         os.remove(path)
         assert wait_until(lambda: happened("deleted", "a.py"))
         assert chunks_of("a.py") == []
-        assert all(e["chunks"] == 0 for e in event_repository.EVENTS if e["type"] == "deleted")
+        assert all(e["chunks"] == 0 for e in event_repository.events if e["type"] == "deleted")
     finally:
         observer.stop()
         observer.join()
@@ -114,8 +114,8 @@ def test_watcher_removes_the_chunks_of_a_deleted_file(temp_index, monkeypatch):
 
 def test_watcher_ignores_temporary_hidden_and_skipped_files(temp_index, monkeypatch):
     """Slower test: real filesystem events."""
-    monkeypatch.setattr(event_repository, "EVENTS", [])
-    observer = watcher.watch()
+    monkeypatch.setattr(event_repository, "events", [])
+    observer = watcher_service.watch()
     try:
         write(temp_index, "b.py.ioc.tmp", "def b():\n    pass\n")
         write(temp_index, ".swap.py", "def s():\n    pass\n")
@@ -123,8 +123,8 @@ def test_watcher_ignores_temporary_hidden_and_skipped_files(temp_index, monkeypa
         write(temp_index, "marker.py", "def m():\n    return 1\n")  # written last, so it is the proof we waited long enough
         assert wait_until(lambda: happened("indexed", "marker.py"))
         time.sleep(1)
-        assert [e["path"] for e in event_repository.EVENTS] == ["marker.py"] * len(event_repository.EVENTS)
-        assert database.get_collection().count() == 1
+        assert [e["path"] for e in event_repository.events] == ["marker.py"] * len(event_repository.events)
+        assert chroma_db.get_collection().count() == 1
     finally:
         observer.stop()
         observer.join()
@@ -132,13 +132,13 @@ def test_watcher_ignores_temporary_hidden_and_skipped_files(temp_index, monkeypa
 
 def test_watcher_watches_new_subfolders_and_reports_only_files(temp_index, monkeypatch):
     """Slower test: real filesystem events."""
-    monkeypatch.setattr(event_repository, "EVENTS", [])
-    observer = watcher.watch()
+    monkeypatch.setattr(event_repository, "events", [])
+    observer = watcher_service.watch()
     try:
         os.makedirs(os.path.join(temp_index, "sub"))
         write(temp_index, "sub/a.py", "def a():\n    return 1\n")  # files in a new subfolder are watched too
         assert wait_until(lambda: happened("indexed", "sub/a.py"))
-        assert all(e["path"] == "sub/a.py" for e in event_repository.EVENTS)
+        assert all(e["path"] == "sub/a.py" for e in event_repository.events)
     finally:
         observer.stop()
         observer.join()
@@ -146,16 +146,16 @@ def test_watcher_watches_new_subfolders_and_reports_only_files(temp_index, monke
 
 def test_a_failing_event_does_not_stop_the_watcher(temp_index, monkeypatch, capsys):
     """Slower test: real filesystem events."""
-    monkeypatch.setattr(event_repository, "EVENTS", [])
-    real_reindex = indexer.reindex_file
+    monkeypatch.setattr(event_repository, "events", [])
+    real_reindex = indexer_service.reindex_file
 
     def broken_for_bad_py(full_path):
         if full_path.endswith("bad.py"):
             raise RuntimeError("boom")
         return real_reindex(full_path)
 
-    monkeypatch.setattr(indexer, "reindex_file", broken_for_bad_py)
-    observer = watcher.watch()
+    monkeypatch.setattr(indexer_service, "reindex_file", broken_for_bad_py)
+    observer = watcher_service.watch()
     try:
         write(temp_index, "bad.py", "def bad():\n    pass\n")
         write(temp_index, "good.py", "def good():\n    return 1\n")
@@ -170,17 +170,17 @@ def test_a_failing_event_does_not_stop_the_watcher(temp_index, monkeypatch, caps
 def test_watcher_ignores_the_opened_events_that_reading_a_file_causes_on_linux(temp_index, monkeypatch):
     from watchdog.events import FileClosedNoWriteEvent, FileOpenedEvent
 
-    monkeypatch.setattr(event_repository, "EVENTS", [])
+    monkeypatch.setattr(event_repository, "events", [])
     path = write(temp_index, "a.py", "def a():\n    return 1\n")
     for event in [FileOpenedEvent(path), FileClosedNoWriteEvent(path)]:
-        watcher.Handler().on_any_event(event)
-    assert event_repository.EVENTS == []
+        watcher_service.on_any_event(event)
+    assert event_repository.events == []
 
 
 def test_renaming_a_file_removes_the_old_path_and_indexes_the_new_one(temp_index, monkeypatch):
     """Slower test: real filesystem events."""
-    monkeypatch.setattr(event_repository, "EVENTS", [])
-    observer = watcher.watch()
+    monkeypatch.setattr(event_repository, "events", [])
+    observer = watcher_service.watch()
     try:
         write(temp_index, "old.py", "def a():\n    return 1\n")
         assert wait_until(lambda: happened("indexed", "old.py"))
@@ -195,15 +195,15 @@ def test_renaming_a_file_removes_the_old_path_and_indexes_the_new_one(temp_index
 
 def test_replacing_a_file_through_an_ioc_tmp_file_reindexes_the_real_file_only(temp_index, monkeypatch):
     """Slower test: real filesystem events. This is how the Patch Loop writes files."""
-    monkeypatch.setattr(event_repository, "EVENTS", [])
-    observer = watcher.watch()
+    monkeypatch.setattr(event_repository, "events", [])
+    observer = watcher_service.watch()
     try:
         write(temp_index, "x.py", "def x():\n    return 1\n")
         assert wait_until(lambda: happened("indexed", "x.py"))
         write(temp_index, "x.py.ioc.tmp", "def x():\n    return 1\n\n\ndef y():\n    return 2\n")
         os.replace(os.path.join(temp_index, "x.py.ioc.tmp"), os.path.join(temp_index, "x.py"))
-        assert wait_until(lambda: any(e["path"] == "x.py" and e["chunks"] == 2 for e in event_repository.EVENTS))
-        assert not any("ioc.tmp" in e["path"] for e in event_repository.EVENTS)
+        assert wait_until(lambda: any(e["path"] == "x.py" and e["chunks"] == 2 for e in event_repository.events))
+        assert not any("ioc.tmp" in e["path"] for e in event_repository.events)
     finally:
         observer.stop()
         observer.join()
@@ -216,9 +216,9 @@ def test_watch_polling_uses_the_polling_observer_and_still_indexes_files(temp_in
     """Slower test: polling looks at the folder about once a second."""
     from watchdog.observers.polling import PollingObserver
 
-    monkeypatch.setattr(event_repository, "EVENTS", [])
+    monkeypatch.setattr(event_repository, "events", [])
     monkeypatch.setenv("WATCH_POLLING", "1")
-    observer = watcher.watch()
+    observer = watcher_service.watch()
     try:
         assert isinstance(observer, PollingObserver)
         assert "(polling)" in capsys.readouterr().out
@@ -237,7 +237,7 @@ def test_without_watch_polling_one_the_normal_observer_is_used(temp_index, monke
     monkeypatch.delenv("WATCH_POLLING", raising=False)
     if value:
         monkeypatch.setenv("WATCH_POLLING", value)
-    observer = watcher.watch()
+    observer = watcher_service.watch()
     try:
         assert not isinstance(observer, PollingObserver)
         assert "(notifications)" in capsys.readouterr().out
@@ -253,12 +253,12 @@ def test_console_command_with_watch_prints_each_event_once_and_stops_on_ctrl_c(t
     from types import SimpleNamespace
 
     write(temp_index, "a.py", "def a():\n    pass\n")
-    monkeypatch.setattr(event_repository, "EVENTS", [])
+    monkeypatch.setattr(event_repository, "events", [])
     monkeypatch.setattr(sys, "argv", ["p1.index", temp_index, "--watch"])
     observer = SimpleNamespace(stopped=False, joined=False)
     observer.stop = lambda: setattr(observer, "stopped", True)
     observer.join = lambda: setattr(observer, "joined", True)
-    monkeypatch.setattr(watcher, "watch", lambda root=None: observer)
+    monkeypatch.setattr(watcher_service, "watch", lambda root=None: observer)
     sleeps = []
 
     def fake_sleep(seconds):
@@ -272,7 +272,7 @@ def test_console_command_with_watch_prints_each_event_once_and_stops_on_ctrl_c(t
             raise KeyboardInterrupt
 
     monkeypatch.setattr(time, "sleep", fake_sleep)
-    p1_index.main()
+    index_command.main()
     lines = capsys.readouterr().out.splitlines()
     assert lines == ["indexed 1 chunks from 1 files", "indexed a.py (1 chunks)", "deleted b.md (0 chunks)"]
     assert observer.stopped and observer.joined
@@ -281,8 +281,8 @@ def test_console_command_with_watch_prints_each_event_once_and_stops_on_ctrl_c(t
 def test_console_command_without_watch_does_not_start_the_watcher(temp_index, monkeypatch, capsys):
     write(temp_index, "a.py", "def a():\n    pass\n")
     monkeypatch.setattr(sys, "argv", ["p1.index", temp_index])
-    monkeypatch.setattr(watcher, "watch", lambda: pytest.fail("the Watcher must not start"))
-    p1_index.main()
+    monkeypatch.setattr(watcher_service, "watch", lambda: pytest.fail("the Watcher must not start"))
+    index_command.main()
     assert capsys.readouterr().out == "indexed 1 chunks from 1 files\n"
 
 
@@ -291,5 +291,5 @@ def test_console_command_follows_a_symlinked_folder_so_watcher_paths_match(temp_
     link = tmp_path / "link"
     link.symlink_to(temp_index)
     monkeypatch.setattr(sys, "argv", ["p1.index", str(link)])
-    p1_index.main()
+    index_command.main()
     assert settings.TARGET_DIR == os.path.realpath(temp_index)

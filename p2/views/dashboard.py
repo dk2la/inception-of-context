@@ -6,9 +6,15 @@ from fastapi.responses import FileResponse
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
-router = APIRouter()
+
+class DashboardView:
+    def __init__(self, static_dir):
+        self.static_dir = static_dir
+        self.router = APIRouter()
+        self.router.add_api_route("/", self.dashboard, methods=["GET"])
+
+    def dashboard(self):
+        return FileResponse(os.path.join(self.static_dir, "index.html"))
 
 
-@router.get("/")
-def dashboard():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+dashboard_view = DashboardView(STATIC_DIR)

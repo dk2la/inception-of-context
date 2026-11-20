@@ -145,7 +145,7 @@ docker compose run --rm -w /workspace ioc python -m pytest -q       # Target Pro
 target/        the Target Project: a calculator with its own tests and ioc.config.yml (the Validation Command)
 p1/            Part 1, Index + Watcher, and what every part shares
   config/        settings.py: every setting (environment variables and limits)
-  core/          database.py (the one Chroma client), llm.py (the only call to the model)
+  core/          chroma_db.py (ChromaDB, the one Chroma client), llm.py (LLMClient, the only call to the model)
   models/        Chunk, Event
   schemas/       response bodies of the Part 1 routes
   repositories/  chunk_repository (writes and browses the Index), file_repository (disk), event_repository
@@ -167,6 +167,10 @@ p3/            Part 3, Patch Loop
   views/         /patch
   app.py         the Part 2 app plus /patch
 tests/         tests of every part; tests/test_layers.py checks the layer rules
+
+Every module is one class and, at its end, the object the rest of the code uses, built with what it needs:
+`chunker_service = ChunkerService(chunk_factory)`, `event_repository = EventRepository()`,
+`indexer_service = IndexerService(settings, chroma_db, chunk_factory, chunk_repository, file_repository, chunker_service)`.
 docs/          plan.md (the design), adr/ (the reasons behind it)
 GLOSSARY.md    the words used everywhere: Chunk, Index, Watcher, Intent, Patch, Attempt, Rollback, ...
 ```

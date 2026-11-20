@@ -1,7 +1,7 @@
 """The JSON body POST /patch accepts."""
 from pydantic import BaseModel
 
-from p1.config import settings
+from p1.config.settings import settings
 
 
 class PatchRequest(BaseModel):
