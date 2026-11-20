@@ -375,8 +375,8 @@
 
   /* ---------- 3D View: plain CSS 3D, no libraries ---------- */
   :root {
-    --scene-bg: #06080c;
-    --scene-glow: rgba(124, 140, 255, 0.18);
+    --scene-bg: #04140d;
+    --scene-glow: rgba(60, 207, 145, 0.22);
     --face: #1c2231;
     --face-dark: #0d1118;
     --plate-bg: rgba(20, 25, 36, 0.62);
@@ -387,8 +387,8 @@
   }
   @media (prefers-color-scheme: light) {
     :root {
-      --scene-bg: #e9edf4;
-      --scene-glow: rgba(79, 94, 255, 0.14);
+      --scene-bg: #e3f3ea;
+      --scene-glow: rgba(18, 147, 92, 0.16);
       --face: #ffffff;
       --face-dark: #d9dee8;
       --plate-bg: rgba(255, 255, 255, 0.62);
@@ -404,7 +404,7 @@
     position: relative; margin-top: 16px; height: max(580px, calc(100vh - 210px)); overflow: hidden;
     border: 1px solid var(--border); border-radius: var(--radius); user-select: none; touch-action: none; cursor: grab;
     background: radial-gradient(110% 80% at 50% 0%, var(--scene-glow), transparent 62%),
-                radial-gradient(60% 50% at 50% 100%, rgba(56, 189, 248, 0.07), transparent 70%), var(--scene-bg);
+                radial-gradient(60% 50% at 50% 100%, rgba(60, 207, 145, 0.08), transparent 70%), var(--scene-bg);
   }
   .scene-wrap.dragging { cursor: grabbing; }
   .scene-wrap:fullscreen { height: 100vh; border: 0; border-radius: 0; }
@@ -474,6 +474,20 @@
   .beam.reindex { --beam: var(--ok); }
   .beam.llm { --beam: #f472b6; }
   @keyframes beam-flow { to { background-position: 22px 0; } }
+
+  /* The dino: a mascot made of voxels. It sways while idle and jumps when a Patch passes. */
+  .dino, .voxel { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
+  .dino { --dc: #ff8a3d; cursor: pointer; transform-origin: 80px 13px; animation: dino-idle 2.6s ease-in-out infinite; }
+  .dino .face { border-color: rgba(0, 0, 0, 0.16); }
+  .voxel .face.top { background: color-mix(in srgb, var(--dc) 82%, #ffffff); }
+  .voxel .face.x { background: color-mix(in srgb, var(--dc) 68%, #000000); }
+  .voxel .face.y { background: var(--dc); }
+  .voxel.eye { --dc: #17130f; }
+  .voxel.spike { --dc: #ffd34d; }
+  .voxel.belly { --dc: #ffc08a; }
+  .dino.jump { animation: dino-jump 0.75s cubic-bezier(0.3, 0.7, 0.4, 1) 2; }
+  @keyframes dino-idle { 50% { transform: translateZ(5px) rotateZ(-4deg); } }
+  @keyframes dino-jump { 45% { transform: translateZ(90px) rotateZ(-10deg); } 85% { transform: translateZ(0); } }
 
   .packet { pointer-events: none; --part: var(--pk); }
   .packet .face { background: var(--pk); border-color: #fff; box-shadow: 0 0 22px 6px var(--pk); }
@@ -1351,7 +1365,7 @@ function showPatchOnMap(data) {
   setNode("p3", "outcome", success ? "ok" : "fail", success ? "reindexed" : "rolled back");
   setLaneStatus("p3", success ? "success" : "rolled back", success ? "ok" : "fail");
   const ms = flow3d(["p3-intent", "p3-retriever", "p3-coder", "p3-sanity", "p3-apply", "p3-validate", "p3-outcome"]);
-  if (success) setTimeout(() => flow3d(["p3-outcome", "p1-watcher", "p1-chroma"]), ms);
+  if (success) setTimeout(() => { flow3d(["p3-outcome", "p1-watcher", "p1-chroma"]); dinoJump(); }, ms);
 }
 
 // Run button: send the Intent to POST /patch and wait. The loop can take minutes on CPU, so a timer shows it is alive.
@@ -1554,6 +1568,47 @@ function addCube(world, id, color, x, z, side, height, title, sub) {
   SCENE.cubes[id] = {x, y: 0, z, h: height, cube, stat, title};
 }
 
+// The dino, row by row from the top: # skin, b belly, e eye, s back spike, . nothing. It faces +x, like the flow.
+const DINO = [
+  "........####.",
+  ".......######",
+  ".......#e####",
+  ".......######",
+  "...s.s.###...",
+  "..########...",
+  ".#######bb#..",
+  "##.#####bb...",
+  "...######....",
+  "....##.##....",
+  "....##.##....",
+  "...###.###...",
+];
+
+function addDino(world) {
+  const voxel = 13, depth = 30;
+  const dino = make("div", "dino");
+  DINO.forEach((row, index) => {
+    const z = (DINO.length - 1 - index) * voxel;
+    for (const run of row.matchAll(/#+|b+|e+|s+/g)) { // one box per run of the same colour, so few elements
+      const kind = {"#": "skin", b: "belly", e: "eye", s: "spike"}[run[0][0]];
+      const box = make("div", "voxel " + kind, ...boxFaces(run[0].length * voxel, depth, voxel));
+      box.style.transform = `translate3d(${run.index * voxel}px, 0px, ${z}px)`;
+      dino.append(box);
+    }
+  });
+  const holder = make("div", "dino-pos", dino);
+  holder.style.transform = "translate3d(640px, 150px, 0px)";
+  world.append(holder);
+}
+
+function dinoJump() {
+  const dino = document.querySelector(".dino");
+  if (!dino) return;
+  dino.classList.remove("jump");
+  void dino.offsetWidth; // restart the animation
+  dino.classList.add("jump");
+}
+
 // A point on a cube: its centre, lifted from mid height.
 function anchor(id, lift = 0) {
   const cube = SCENE.cubes[id];
@@ -1603,6 +1658,7 @@ function buildScene() {
   Object.assign(pad.style, {width: "170px", height: "170px", transform: "translate3d(645px, -85px, 150px)"});
   world.append(pad);
   addCube(world, "ollama", PART_COLORS.ollama, 730, 150, 100, 120, "Ollama", "separate container");
+  addDino(world);
   addBeam(world, "p1-chroma", "p2-retriever", "cross", "", "hybrid search");
   addBeam(world, "p1-chroma", "p3-retriever", "cross", "", "top-k files");
   addBeam(world, "p3-outcome", "p1-watcher", "reindex", "", "reindex");
@@ -1751,6 +1807,7 @@ async function replay(name) {
     else if (action === "go") await sleep(flow3d(args) + 80);
     else cube3d(args[0], {on: "active", ok: "ok", fail: "fail", skip: "skipped"}[action], args[1]);
   }
+  if (name === "patch" || name === "rollback") dinoJump();
   await sleep(2500);
   if (run === SCENE.run) syncCubesFromMap();
 }
@@ -1766,7 +1823,7 @@ function connectScene() {
   let down = null;
   wrap.addEventListener("pointerdown", (e) => {
     if (e.target.closest(".scene-bar, .scene-info, .scene-legend")) return;
-    down = {x: e.clientX, y: e.clientY, moved: false, cube: e.target.closest(".cube")};
+    down = {x: e.clientX, y: e.clientY, moved: false, cube: e.target.closest(".cube"), dino: e.target.closest(".dino")};
     wrap.setPointerCapture(e.pointerId);
   });
   wrap.addEventListener("pointermove", (e) => {
@@ -1787,7 +1844,12 @@ function connectScene() {
   });
   const release = (click) => {
     if (!down) return;
-    if (click && !down.moved) down.cube ? selectCube(down.cube.dataset.cube) : (setFocus([]), showDefaultInfo());
+    if (click && !down.moved && down.dino) {
+      dinoJump();
+      showInfo("Mascot", "Dino", "Made of the same cubes as everything else. It does no work, but it jumps every time a Patch passes the tests.");
+    } else if (click && !down.moved) {
+      down.cube ? selectCube(down.cube.dataset.cube) : (setFocus([]), showDefaultInfo());
+    }
     down = null;
     SCENE.dragging = false;
     wrap.classList.remove("dragging");
