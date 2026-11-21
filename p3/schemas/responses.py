@@ -16,6 +16,6 @@ class AttemptResult(BaseModel):
 
 
 class PatchResponse(BaseModel):
-    status: str  # "success" or "failed"
+    status: str
     attempts: list[AttemptResult]
     patch: Optional[dict]

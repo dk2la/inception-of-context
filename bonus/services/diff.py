@@ -5,10 +5,6 @@ import difflib
 class DiffService:
     def unified(self, path, old, new):
         """One unified diff. old and new are the full file texts ("" if the file is new)."""
-        # debug: path == "calculator/core.py". old is the 21-line Calculator class.
-        # new is that class plus "def power(self, a, b)". Nothing is written.
-        # return starts with "--- a/calculator/core.py\n+++ b/calculator/core.py\n"
-        # a brand-new tests/test_power.py: old == "", so every content line in the diff starts with "+"
         return "".join(difflib.unified_diff(
             old.splitlines(keepends=True),
             new.splitlines(keepends=True),

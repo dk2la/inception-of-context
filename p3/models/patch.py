@@ -5,25 +5,25 @@ OPS = ("create", "modify", "delete")
 
 
 class PatchFile(TypedDict):
-    path: str  # relative to the Target Project
-    op: str  # one of OPS
-    content: str  # the COMPLETE new file ("" for delete)
+    path: str
+    op: str
+    content: str
 
 
 class Patch(TypedDict):
     summary: str
-    files: list  # of PatchFile
+    files: list
 
 
 class Attempt(TypedDict):
-    number: int  # 1, 2 or 3
-    ok: bool  # True only if the Validation Command passed
-    error: Optional[str]  # why it failed; sent to the model on the next Attempt
+    number: int
+    ok: bool
+    error: Optional[str]
     patch: Optional[Patch]
-    generation: Optional[dict]  # {ok, summary} or {ok, error}
-    sanity: Optional[dict]  # {ok, reason}
-    apply: Optional[dict]  # {ok, files} or {ok, error}
-    validation: Optional[dict]  # {ok, log}
+    generation: Optional[dict]
+    sanity: Optional[dict]
+    apply: Optional[dict]
+    validation: Optional[dict]
 
 
 class AttemptFactory:

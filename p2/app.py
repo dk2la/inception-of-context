@@ -26,7 +26,7 @@ class Lifecycle:
         self.settings = settings
         self.indexer_service = indexer_service
         self.watcher_service = watcher_service
-        self.observer = None  # the running Watcher, so the shutdown code can stop it
+        self.observer = None
 
     def start_indexing(self):
         """Catch up with the Target Project, then start the Watcher. Runs in a background thread."""
@@ -39,7 +39,6 @@ class Lifecycle:
 
     @contextlib.asynccontextmanager
     async def lifespan(self, app):
-        # A thread, so requests are answered while the first index is still running.
         threading.Thread(target=self.start_indexing, daemon=True).start()
         yield
         if self.observer:

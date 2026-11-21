@@ -14,8 +14,8 @@ class ChromaDB:
     def __init__(self, settings):
         self.settings = settings
         self._collection = None
-        self._collection_lock = threading.Lock()  # the startup thread and the first request may both open the Index
-        self.INDEX_VERSION = 0  # goes up every time Chunk texts change, so the keyword search knows to rebuild
+        self._collection_lock = threading.Lock()
+        self.INDEX_VERSION = 0
 
     def get_collection(self):
         """The one Chroma collection of this process. The Chroma client is created on first use."""

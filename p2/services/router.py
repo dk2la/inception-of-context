@@ -4,13 +4,8 @@ Those two kinds of Question are answered from the Index without the model (ADR-0
 """
 import re
 
-# Symbol questions are recognised with these patterns, one phrasing each. To teach the router a new
-# phrasing, add one line to a list. The first capturing group of a pattern is the name asked about.
-# A pattern must reach the end of the question (only "in the project", "?" or "." may follow the name),
-# so "is there a function that divides numbers?" is not mistaken for a function called "that".
 NAME = r"`?(\w+(?:\.\w+)*)`?"
 END = r"(?: (?:in|в) .*)?\W*$"
-# Russian words change their endings ("функция", "функции", "функцию"), so only the stem is matched.
 RU_FUNCTION = r"(?:функци\w*|метод\w*)"
 HAS_FUNCTION_PATTERNS = [
     r"is there (?:a |an |any )?(?:function|method) (?:called |named )?" + NAME + END,
@@ -18,7 +13,6 @@ HAS_FUNCTION_PATTERNS = [
     r"(?:есть|существует) ли (?:(?:в|у) (?:\S+ ){1,2})?" + RU_FUNCTION + " (?:с именем |под названием )?" + NAME + END,
 ]
 
-# A file name needs an extension, so "what functions are in the project?" is not about a file called "project".
 FILE = r"`?([\w./-]+\.\w+)`?"
 IN_FILE = r"(?:in|inside|from|of) (?:the )?(?:file )?" + FILE + r"\W*$"
 RU_IN_FILE = r"(?:в|из|внутри) (?:файле |файла )?" + FILE + r"\W*$"

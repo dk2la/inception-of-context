@@ -94,7 +94,7 @@ def test_merge_applies_exactly_the_reviewed_patch(bonus, core, fake_llm):
     assert body["pull"]["merge"]["at"] > 0
     assert body["attempts"][0]["validation"]["ok"] is True
     assert core.read_text() == expected
-    assert fake_llm.replies == []  # Merge does not ask the model again
+    assert fake_llm.replies == []
 
 
 def test_merge_commits_when_asked(bonus, core, fake_llm, temp_index):
@@ -171,14 +171,11 @@ def test_keep_false_rolls_back_a_green_attempt(client, core, fake_llm):
     assert core.read_text() == before
 
 
-# --- the history is saved next to the Index and read back after a restart ---
-
-
 def test_pull_requests_survive_a_restart(bonus, core, fake_llm):
     open_pull(bonus, core, fake_llm)
     bonus.post("/bonus/pulls/1/merge", json={"git_commit": False})
     open_pull(bonus, core, fake_llm)
-    pull_repository.loaded_from = None  # what a new process sees
+    pull_repository.loaded_from = None
     pull_repository.pulls = {}
     pulls = bonus.get("/bonus/pulls").json()
     assert [(p["number"], p["state"]) for p in pulls] == [(2, "open"), (1, "merged")]

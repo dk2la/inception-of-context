@@ -29,10 +29,10 @@ def test_startup_indexes_the_target_project_and_then_stops_the_watcher(temp_inde
     write(temp_index, "a.py", "def a():\n    return 1\n")
     with TestClient(app):
         assert wait_until(lambda: chroma_db.get_collection().count() > 0)
-        assert wait_until(lambda: lifecycle.observer is not None)  # the Watcher starts after the rescan
+        assert wait_until(lambda: lifecycle.observer is not None)
         observer = lifecycle.observer
         assert observer.is_alive()
-        assert event_repository.events == []  # the rescan at startup is not a live change: no events
+        assert event_repository.events == []
     assert not observer.is_alive()
 
 
@@ -68,7 +68,7 @@ def test_the_server_answers_while_the_first_indexing_is_still_running(temp_index
     try:
         with TestClient(app) as client:
             assert client.get("/status").status_code == 200
-            assert lifecycle.observer is None  # still busy indexing
+            assert lifecycle.observer is None
             release.set()
             assert wait_until(lambda: lifecycle.observer is not None)
     finally:

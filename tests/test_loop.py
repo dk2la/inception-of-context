@@ -26,9 +26,6 @@ def target(temp_index):
     return Path(temp_index)
 
 
-# --- load_validation_command ---
-
-
 def test_load_validation_command_returns_the_validate_line(target):
     (target / "ioc.config.yml").write_text("validate: echo ok\n")
     assert validation_service.load_validation_command() == "echo ok"
@@ -52,8 +49,6 @@ def test_load_validation_command_without_a_config_file_raises_file_not_found(tar
         validation_service.load_validation_command()
 
 
-# --- run_validation ---
-
 COMPILE_THEN_PRINT = "validate: python -m py_compile {files} && python -c \"print('tests ran')\"\n"
 
 
@@ -66,7 +61,7 @@ def test_run_validation_passes_when_the_command_succeeds(target):
 
 
 def test_run_validation_runs_python_with_the_interpreter_that_runs_the_server(target, monkeypatch):
-    monkeypatch.setenv("PATH", str(target))  # a PATH with no python in it
+    monkeypatch.setenv("PATH", str(target))
     (target / "ioc.config.yml").write_text("validate: python -c \"import sys; print(sys.prefix)\"\n")
     ok, log = validation_service.run_validation([])
     assert ok is True
@@ -128,7 +123,6 @@ def test_run_validation_stops_a_command_that_takes_too_long(target, monkeypatch)
 
 def test_run_validation_timeout_kills_the_children_of_the_shell_too(target, monkeypatch):
     monkeypatch.setattr(settings, "VALIDATION_TIMEOUT", 1)
-    # the subshell is a child of the shell: killing only the shell would let it create the file
     (target / "ioc.config.yml").write_text("validate: (sleep 2 && touch finished.txt); echo done\n")
     ok, log = validation_service.run_validation([])
     assert ok is False
@@ -139,9 +133,6 @@ def test_run_validation_timeout_kills_the_children_of_the_shell_too(target, monk
 def test_run_validation_returns_the_output_of_a_fast_command(target):
     (target / "ioc.config.yml").write_text("validate: echo ok\n")
     assert validation_service.run_validation([]) == (True, "ok\n")
-
-
-# --- take_snapshot ---
 
 
 def test_take_snapshot_stores_the_bytes_of_a_file(target):
@@ -166,9 +157,6 @@ def test_take_snapshot_keeps_windows_line_endings(target):
 
 def test_take_snapshot_of_no_paths_is_empty(target):
     assert target_files_repository.take_snapshot([]) == {}
-
-
-# --- restore_snapshot (Rollback) ---
 
 
 def read_tree(root):
@@ -251,9 +239,6 @@ def test_restore_snapshot_leaves_the_whole_target_project_byte_for_byte_as_it_wa
     assert read_tree(target) == before
 
 
-# --- apply_patch ---
-
-
 def make_patch(*files):
     """A Patch from (path, op, content) tuples."""
     return {"summary": "test", "files": [{"path": p, "op": op, "content": c} for p, op, c in files]}
@@ -291,7 +276,7 @@ def test_apply_patch_returns_the_touched_paths_in_patch_order(target):
 
 def test_apply_patch_that_fails_while_preparing_leaves_the_real_files_untouched(target):
     (target / "a.py").write_text("x = 1\n")
-    patch = make_patch(("a.py", "modify", "x = 2\n"), ("a.py/inner.py", "create", "y = 1\n"))  # a.py is a file
+    patch = make_patch(("a.py", "modify", "x = 2\n"), ("a.py/inner.py", "create", "y = 1\n"))
     with pytest.raises(OSError):
         target_files_repository.apply_patch(patch)
     assert (target / "a.py").read_text() == "x = 1\n"
@@ -314,10 +299,8 @@ def test_apply_patch_then_rollback_leaves_the_whole_target_project_byte_for_byte
     assert read_tree(target) == before
 
 
-# --- validation after a Rollback must run the restored code, not a stale .pyc ---
-
 ADD_PLUS = "def add(a, b):\n    return a + b\n"
-ADD_MINUS = "def add(a, b):\n    return a - b\n"  # same size as ADD_PLUS
+ADD_MINUS = "def add(a, b):\n    return a - b\n"
 TEST_ADD = "from calc import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n"
 
 
@@ -340,7 +323,7 @@ def test_validation_after_a_rollback_runs_the_restored_code_not_a_stale_pyc(targ
     assert validation_service.run_validation(["calc.py"])[0] is False
     target_files_repository.restore_snapshot(snapshot)
     same_second(target / "calc.py")
-    assert validation_service.run_validation([])[0] is True  # no .py file to recompile: it must not run an old .pyc
+    assert validation_service.run_validation([])[0] is True
 
 
 def test_validation_leaves_nothing_behind_in_the_target_project(target):
@@ -348,11 +331,9 @@ def test_validation_leaves_nothing_behind_in_the_target_project(target):
     before = read_tree(target)
     ok, log = validation_service.run_validation(["calc.py"])
     assert ok is True
-    assert read_tree(target) == before  # no .pyc files, no .pytest_cache
+    assert read_tree(target) == before
     assert list(target.glob("**/__pycache__")) == []
 
-
-# --- parse_patch ---
 
 GOOD_PATCH = {"summary": "Add power", "files": [{"path": "a.py", "op": "modify", "content": "x"}]}
 
@@ -412,9 +393,6 @@ def test_parse_patch_names_the_file_entry_that_is_wrong(bad_file, expected_reaso
     assert reason == expected_reason
 
 
-# --- build_patch_prompt ---
-
-
 def test_build_patch_prompt_lists_all_files_and_gives_the_relevant_ones_in_full(client, target):
     prompt = patch_loop_service.build_patch_prompt("add a power method to the calculator", 3)
     for path in ["main.py", "calculator/core.py", "ioc.config.yml"]:
@@ -447,8 +425,6 @@ def test_build_patch_prompt_copes_with_a_previous_attempt_that_had_no_patch(clie
     previous = {"patch": None, "error": "not valid JSON"}
     assert "not valid JSON" in patch_loop_service.build_patch_prompt("add a power method", 3, previous)
 
-
-# --- run_attempt ---
 
 POWER_METHOD = '''
     def power(self, a, b):
@@ -553,7 +529,6 @@ def test_run_attempt_rolls_back_a_validation_timeout(client, target, fake_llm, m
 def test_run_attempt_rolls_back_when_applying_the_patch_raises(client, target, fake_llm):
     before = read_tree(target)
     core = (target / "calculator" / "core.py").read_text()
-    # core.py is already written when deleting the missing file raises
     patch = make_patch(("calculator/core.py", "modify", core + POWER_METHOD), ("nothing.py", "delete", ""))
     fake_llm.replies = [json.dumps(patch)]
     attempt = patch_loop_service.run_attempt("add a power method", 3, None, 1)
@@ -572,9 +547,6 @@ def test_run_attempt_does_not_swallow_an_unreachable_model(client, target, fake_
     assert read_tree(target) == before
 
 
-# --- run_patch_loop ---
-
-
 def test_run_patch_loop_succeeds_on_the_first_attempt(client, target, fake_llm):
     fake_llm.replies = [power_reply(target)]
     result = patch_loop_service.run_patch_loop("add a power method")
@@ -591,8 +563,8 @@ def test_run_patch_loop_tells_the_model_why_the_first_attempt_failed(client, tar
     assert [a["ok"] for a in result["attempts"]] == [False, True]
     second_prompt = fake_llm.prompts[1][1]
     assert "YOUR PREVIOUS ATTEMPT FAILED" in second_prompt
-    assert "FAILED tests/test_core.py" in second_prompt  # the end of the pytest log
-    assert "a - b" in second_prompt  # the previous Patch is shown too
+    assert "FAILED tests/test_core.py" in second_prompt
+    assert "a - b" in second_prompt
 
 
 def test_run_patch_loop_leaves_the_target_project_untouched_after_three_failures(client, target, fake_llm):
@@ -625,16 +597,13 @@ def test_run_patch_loop_never_runs_more_than_three_attempts(client, target, fake
     fake_llm.replies = ["not json"] * 4
     result = patch_loop_service.run_patch_loop("add a power method", max_attempts=10)
     assert len(result["attempts"]) == 3
-    assert len(fake_llm.replies) == 1  # the fourth reply was never asked for
+    assert len(fake_llm.replies) == 1
 
 
 def test_run_patch_loop_runs_at_least_one_attempt(client, target, fake_llm):
     fake_llm.replies = ["not json"]
     result = patch_loop_service.run_patch_loop("add a power method", max_attempts=0)
     assert len(result["attempts"]) == 1
-
-
-# --- POST /patch ---
 
 
 def test_post_patch_applies_a_good_patch(client, target, fake_llm):
@@ -652,7 +621,7 @@ def test_post_patch_applies_a_good_patch(client, target, fake_llm):
 def test_post_patch_rolls_back_after_three_failed_attempts(client, target, fake_llm):
     before = read_tree(target)
     fake_llm.replies = [broken_reply(target)] * 3
-    response = client.post("/patch", json={"intent": "add power"})  # max_attempts defaults to 3
+    response = client.post("/patch", json={"intent": "add power"})
     body = response.json()
     assert response.status_code == 200
     assert body["status"] == "failed"
@@ -686,9 +655,6 @@ def test_the_part_2_app_alone_has_no_patch_route():
     result = subprocess.run([sys.executable, "-c", code], cwd=REPO_ROOT, capture_output=True, text=True)
     assert "/status" in result.stdout
     assert "/patch" not in result.stdout
-
-
-# --- review fixes ---
 
 
 def test_apply_patch_keeps_the_file_mode_and_rollback_gives_it_back(target):
@@ -739,9 +705,6 @@ def test_a_patch_that_names_a_folder_is_refused_not_a_500(client, target, fake_l
     assert read_tree(target) == before
 
 
-# --- edge cases found by the coverage report ---
-
-
 def test_apply_patch_failing_halfway_through_the_swap_leaves_no_temporary_file(target):
     """The first file is already swapped in (its .ioc.tmp is gone) when the second swap fails."""
     (target / "a.py").write_text("old\n")
@@ -750,13 +713,13 @@ def test_apply_patch_failing_halfway_through_the_swap_leaves_no_temporary_file(t
                                        {"path": "folder", "op": "create", "content": "x\n"}]}
     with pytest.raises(OSError):
         target_files_repository.apply_patch(patch)
-    assert sorted(p.name for p in target.iterdir()) == ["a.py", "folder"]  # no *.ioc.tmp left behind
+    assert sorted(p.name for p in target.iterdir()) == ["a.py", "folder"]
 
 
 def test_patch_prompt_leaves_out_a_file_that_is_indexed_but_no_longer_readable(target):
     path = target / "gone.py"
     path.write_text("def gone():\n    return 1\n")
     indexer_service.reindex_file(str(path))
-    path.unlink()  # deleted, and no Watcher runs in this test to clean the Index
+    path.unlink()
     prompt = patch_loop_service.build_patch_prompt("gone", 5)
     assert "=== FILE: gone.py ===" not in prompt

@@ -25,7 +25,7 @@ class IndexerService:
         """
         rel_path = self.file_repository.relative_path(full_path)
         if rel_path.startswith(".."):
-            return 0  # outside the Target Project
+            return 0
 
         chunks = []
         text = None if self.file_repository.is_skipped(rel_path) else self.file_repository.read_text(full_path)
@@ -36,7 +36,6 @@ class IndexerService:
 
         to_delete = [i for i in old if i not in new]
         to_add = [i for i in new if i not in old]
-        # Same text, but the lines moved (something above it changed): update the numbers only.
         moved = [i for i in new if i in old and old[i] != self.chunk_factory.metadata_of(new[i])]
         if to_delete:
             self.chunk_repository.delete(to_delete)
@@ -45,7 +44,7 @@ class IndexerService:
             self.chunk_repository.add(to_add, texts, [self.chunk_factory.metadata_of(new[i]) for i in to_add])
         if moved:
             self.chunk_repository.update_metadata(moved, [self.chunk_factory.metadata_of(new[i]) for i in moved])
-        if to_delete or to_add:  # the keyword index holds only the texts, so moved Chunks do not change it
+        if to_delete or to_add:
             self.chroma_db.mark_changed()
         return len(new)
 
@@ -56,7 +55,6 @@ class IndexerService:
             self.reindex_file(full_path)
             on_disk.add(self.file_repository.relative_path(full_path))
 
-        # Files deleted while nobody was watching are only in the Index: reindexing them removes them.
         for rel_path in {m["path"] for m in self.chunk_repository.all_metadata()} - on_disk:
             self.reindex_file(os.path.join(self.settings.TARGET_DIR, rel_path))
         return self.chunk_repository.count()

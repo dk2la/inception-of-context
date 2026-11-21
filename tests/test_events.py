@@ -30,8 +30,8 @@ def test_event_stream_sends_new_events_once_after_waiting_half_a_second(monkeypa
     monkeypatch.setattr(events_view_module.time, "sleep", naps.append)
     stream = events_view.event_stream()
     assert json.loads(next(stream)[6:])["path"] == "a.py"
-    assert next(stream).startswith(":")  # nothing new: only a comment, a.py is not sent again
-    event_repository.add_event("indexed", "later.py", 1)  # the Watcher does something while the stream is waiting
+    assert next(stream).startswith(":")
+    event_repository.add_event("indexed", "later.py", 1)
     assert json.loads(next(stream)[6:])["path"] == "later.py"
     assert naps == [0.5]
 
@@ -45,7 +45,7 @@ def test_an_idle_event_stream_keeps_yielding_so_a_closed_connection_is_noticed(m
 
     monkeypatch.setattr(events_view_module.time, "sleep", blocked)
     stream = events_view.event_stream()
-    assert next(stream).startswith(":")  # an SSE comment: the browser ignores it
+    assert next(stream).startswith(":")
 
 
 def test_two_streams_each_get_every_event(monkeypatch):

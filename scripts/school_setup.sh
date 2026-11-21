@@ -1,26 +1,4 @@
 #!/usr/bin/env bash
-# One-shot setup on a 42 school computer (Linux, small home quota, big shared /sgoinfre/goinfre/Perso/$USER).
-#
-#   git clone <repo> inception-of-context && cd inception-of-context
-#   make school                 # or: ./scripts/school_setup.sh
-#   make up                     # make loads .school.env by itself
-#
-#   make purge                  # after the defense: containers, volumes, images, sgoinfre data
-#
-# What goes where
-#   home ($HOME)    the clone itself (a few MB) and .school.env
-#   sgoinfre ($SGO) Docker's image store, so the ioc image (~1.5 GB, with the embedding model), the ollama
-#                   image, the downloaded models (~4 GB, named volume ollama_models) and the Index
-#                   (named volume chroma_data) all live there, not in home. Also the logs of this script.
-#
-# Speed: the ioc image is built and the ollama image pulled in the background while you read the subject;
-# `make up` then only downloads the two models.
-#
-# Options
-#   --sgo DIR      data folder (default /sgoinfre/goinfre/Perso/$USER/inception-of-context)
-#   --no-prefetch  do not build/pull the images in the background
-#   --yes          do not ask before moving Docker's image store out of home
-#   --uninstall    remove everything this script and `make up` created (the clone is kept)
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
@@ -47,7 +25,6 @@ mark() { mkdir -p "$STATE"; echo "$1" >> "$STATE/done"; }
 did()  { [[ -f "$STATE/done" ]] && grep -qx "$1" "$STATE/done"; }
 T0=$SECONDS
 
-# The compose command this machine has: the Docker plugin, the old binary, or podman-compose.
 find_compose() {
   if docker compose version >/dev/null 2>&1; then echo "docker compose"
   elif command -v docker-compose >/dev/null; then echo "docker-compose"
@@ -55,7 +32,6 @@ find_compose() {
   fi
 }
 
-# Rootless Docker or Podman: where the daemon listens. Empty for the default /var/run/docker.sock.
 find_docker_host() {
   if docker --version 2>/dev/null | grep -qi podman; then
     systemctl --user start podman.socket 2>/dev/null
@@ -65,14 +41,12 @@ find_docker_host() {
   fi
 }
 
-# ------------------------------------------------------------------ uninstall
 if [[ $UNINSTALL == 1 ]]; then
   did setup || die "$SGO was not created by this script (no $STATE/done): nothing removed — check --sgo"
   say "Removing what school_setup.sh and make up created"
   [[ -f .school.env ]] && set -a && . ./.school.env && set +a
   COMPOSE="${COMPOSE:-$(find_compose)}"
   if [[ -n "$COMPOSE" ]]; then
-    # containers, the two named volumes (Index + models) and the ioc image built here
     $COMPOSE -f docker-compose.yml -f docker-compose.watch.yml --profile demo down -v --rmi local --remove-orphans \
       >/dev/null 2>&1 && ok "containers, volumes (Index, models) and the ioc image"
   fi
@@ -100,7 +74,6 @@ if [[ $UNINSTALL == 1 ]]; then
   exit 0
 fi
 
-# ------------------------------------------------------------------ 1. places
 say "1. Folders"
 [[ "$(uname -s)" == Linux ]] || warn "not Linux: fine for a dry run, the script targets the school computers"
 if [[ ! -d "$(dirname "$SGO")" ]]; then
@@ -111,7 +84,6 @@ mkdir -p "$SGO" "$LOGS" "$STATE" && chmod 700 "$SGO" || die "cannot write $SGO"
 did setup || mark setup
 ok "data in $SGO ($(df -h "$SGO" | awk 'NR==2{print $4}') free), home has $(df -h "$HOME" | awk 'NR==2{print $4}') free"
 
-# ------------------------------------------------------------------ 2. tools
 say "2. Tools"
 for tool in make git curl; do
   command -v "$tool" >/dev/null && ok "$tool" || warn "$tool not found"
@@ -122,11 +94,9 @@ COMPOSE=$(find_compose)
 [[ -n "$COMPOSE" ]] || die "no compose: need 'docker compose', docker-compose or podman-compose"
 ok "docker $(docker --version | awk '{print $3}' | tr -d ,) · compose: $COMPOSE${DH:+ · DOCKER_HOST=$DH}"
 
-# ------------------------------------------------------------------ 3. Docker image store
 say "3. Docker"
 PODMAN=0; docker --version 2>/dev/null | grep -qi podman && PODMAN=1
 if [[ $PODMAN == 1 ]]; then
-  # Podman refuses short image names (python:3.12-slim, ollama/ollama) without a TTY: resolve them on Docker Hub
   reg="$HOME/.config/containers/registries.conf"
   if ! grep -qs 'unqualified-search-registries *= *\["docker.io"\]' "$reg"; then
     mkdir -p "$HOME/.config/containers"
@@ -170,18 +140,15 @@ else
   die "docker daemon not reachable (not started, or you are not in the docker group)"
 fi
 
-# ------------------------------------------------------------------ 4. shell / make file
 SOCK="${DH#unix://}"
 {
   echo "# written by scripts/school_setup.sh. make loads it by itself; in a shell: set -a; . ./.school.env; set +a"
   [[ -n "$DH" ]] && echo "export DOCKER_HOST=$DH"
-  # rootless Docker / Podman on Linux: the socket docker-compose.watch.yml mounts (Docker Desktop maps the default one)
   [[ "$(uname -s)" == Linux && "$DH" == unix://* ]] && echo "export DOCKER_SOCK=$SOCK"
   [[ "$COMPOSE" != "docker compose" ]] && echo "export COMPOSE=$COMPOSE"
 } > .school.env
 ok "wrote .school.env"
 
-# ------------------------------------------------------------------ 5. background build and pull
 if [[ $PREFETCH == 1 ]]; then
   for img in docker.io/ollama/ollama:latest docker.io/library/python:3.12-slim docker.io/library/docker:27.3.1-cli; do
     docker image inspect "$img" >/dev/null 2>&1 || echo "$img" >> "$STATE/images"
@@ -194,7 +161,6 @@ if [[ $PREFETCH == 1 ]]; then
   ok "building ioc and pulling ollama in the background — progress: tail -f $LOGS/prefetch.log"
 fi
 
-# ------------------------------------------------------------------ summary
 echo
 say "Ready in $((SECONDS - T0)) s.  Home: $(du -sh "$ROOT" 2>/dev/null | cut -f1) clone;  sgoinfre: $SGO"
 cat <<EOF

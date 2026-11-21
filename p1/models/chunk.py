@@ -7,17 +7,17 @@ from typing import TypedDict
 
 
 class Chunk(TypedDict):
-    path: str  # relative to the Target Project, with forward slashes
-    start_line: int  # first line (1-based, inclusive)
-    end_line: int  # last line (1-based, inclusive)
-    name: str  # symbol name; methods are "Class.method", the module header is "<module>"
-    kind: str  # function, async_function, class, method, module, yaml_key, heading or definition
-    text: str  # the exact source text
-    hash: str  # SHA-256 (hex) of text
+    path: str
+    start_line: int
+    end_line: int
+    name: str
+    kind: str
+    text: str
+    hash: str
 
 
-METADATA_KEYS = ["path", "start_line", "end_line", "name", "kind", "hash"]  # stored next to the text
-SYMBOL_KINDS = ["function", "async_function", "class", "method"]  # the kinds that are real symbols
+METADATA_KEYS = ["path", "start_line", "end_line", "name", "kind", "hash"]
+SYMBOL_KINDS = ["function", "async_function", "class", "method"]
 
 
 class ChunkFactory:

@@ -47,9 +47,6 @@ def gone(server, rel_path):
     return wait_until(check)
 
 
-# ============================== Part 1: Index and Watcher ==============================
-
-
 def test_p1_overview_reflects_the_target_project(server):
     status = server.http.get("/status").json()
     assert status["target_dir"] == server.target
@@ -58,7 +55,7 @@ def test_p1_overview_reflects_the_target_project(server):
     files = server.files()
     on_disk = {os.path.relpath(os.path.join(root, name), server.target)
                for root, dirs, names in os.walk(server.target) for name in names
-               if os.path.getsize(os.path.join(root, name)) > 0}  # an empty file has no Chunks
+               if os.path.getsize(os.path.join(root, name)) > 0}
     assert set(files) == on_disk, "every non-empty file of the Target Project, and nothing else"
     assert sum(files.values()) == status["chunks"] > 0
 
@@ -86,7 +83,6 @@ def test_p1_editing_a_file_reindexes_only_its_changed_chunks_and_streams_an_even
             assert after[name] == methods_before[name], f"{name} did not change, so it keeps its id"
         assert {c["id"] for c in server.all_chunks() if c["path"] != CORE} == before, "other files are untouched"
 
-        # The live activity feed (Server-Sent Events) reports the change.
         with server.http.stream("GET", "/events", timeout=10) as stream:
             for line in stream.iter_lines():
                 if line.startswith("data:") and json.loads(line[5:])["path"] == CORE:
@@ -111,7 +107,7 @@ def test_p1_skips_dependency_build_hidden_binary_and_temporary_files(server):
         write(server, rel_path, b"\x00\x01binary" if rel_path.endswith(".bin") else "def nope():\n    return 0\n")
     write(server, "marker.py", "def marker():\n    return 1\n")
     try:
-        indexed(server, "marker.py")  # the Watcher has seen everything written before it
+        indexed(server, "marker.py")
         files = server.files()
         assert [p for p in skipped if p in files] == []
     finally:
@@ -137,9 +133,6 @@ def test_p1_console_command_indexes_once_and_is_incremental(tmp_path):
     assert match and int(match[1]) > 0
     second = subprocess.run(command, cwd=REPO_ROOT, env=env, capture_output=True, text=True, timeout=180)
     assert second.stdout == first.stdout, "the Index persisted, and a rescan of the same files changes nothing"
-
-
-# ============================== Part 2: API and RAG ==============================
 
 
 def test_p2_dashboard_has_the_five_tabs_and_needs_no_network(server):
@@ -205,8 +198,6 @@ def test_p2_part_2_alone_runs_without_the_patch_loop(tmp_path, ollama):
         alone.stop()
 
 
-# ============================== Part 3: Patch Loop ==============================
-
 def power_patch(server):
     core = read(server, CORE) + ('\n    def power(self, a, b):\n        """Return a ** b."""\n'
                                  '        return float(a ** b)\n')
@@ -233,7 +224,6 @@ def test_p3_a_good_patch_is_applied_validated_and_reindexed(server, ollama):
         assert model == "qwen2.5-coder:3b" and json_mode
         assert "=== FILE: calculator/core.py ===" in prompt
         assert "def power" in read(server, CORE)
-        # The Watcher reindexes the touched files: the Index now knows the new function.
         question = {"question": "is there a function power?"}
         wait_until(lambda: server.http.post("/ask", json=question).json()["answer"].startswith("Yes."))
         assert not [p for p in tree(server.target) if p.endswith(".ioc.tmp")]
@@ -246,7 +236,7 @@ def test_p3_a_good_patch_is_applied_validated_and_reindexed(server, ollama):
 def test_p3_three_failed_attempts_roll_back_byte_for_byte(server, ollama):
     before = tree(server.target)
     broken = json.loads(json.dumps(power_patch(server)))
-    broken["files"][0]["content"] = broken["files"][0]["content"].replace("a ** b", "a * b")  # the new test fails
+    broken["files"][0]["content"] = broken["files"][0]["content"].replace("a ** b", "a * b")
     broken["files"].append({"path": "newpkg/deep/helper.py", "op": "create", "content": "X = 1\n"})
     syntax_error = {"summary": "s", "files": [{
         "path": CORE,
@@ -262,7 +252,6 @@ def test_p3_three_failed_attempts_roll_back_byte_for_byte(server, ollama):
     assert "validation failed" in body["attempts"][0]["error"]
     assert "SyntaxError" in body["attempts"][1]["validation"]["log"]
     assert "valid JSON" in body["attempts"][2]["error"]
-    # Each new Attempt was told why the previous one failed.
     assert "YOUR PREVIOUS ATTEMPT FAILED" in ollama.prompts[1][1] and "validation failed" in ollama.prompts[1][1]
     assert tree(server.target) == before, "every file, and no folder made for a created file"
 

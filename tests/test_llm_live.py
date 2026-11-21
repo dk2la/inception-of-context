@@ -21,7 +21,7 @@ def test_later_updates_send_only_the_new_characters_then_done(monkeypatch):
     monkeypatch.setattr(llm_client, "live", live)
     sent = {}
     llm_live_view.updates(sent)
-    assert llm_live_view.updates(sent) == []  # nothing new
+    assert llm_live_view.updates(sent) == []
     live["coder"]["text"] = "abcd"
     assert [(m["reset"], m["delta"]) for m in llm_live_view.updates(sent)] == [(False, "cd")]
     live["coder"]["done"] = True
@@ -48,7 +48,7 @@ def test_the_stream_sends_updates_then_keeps_yielding(monkeypatch):
     message = next(stream)
     assert json.loads(message[len("data: "):])["delta"] == "hi"
     assert next(stream).startswith(":")
-    assert next(stream).startswith(":")  # nothing new after the nap
+    assert next(stream).startswith(":")
     assert naps == [0.2]
 
 

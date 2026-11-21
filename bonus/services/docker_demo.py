@@ -10,7 +10,7 @@ from p3.repositories.target_files import target_files_repository
 DEMO_SCRIPT = os.path.join(os.path.dirname(__file__), "..", "demo", "calculator_job.py")
 DEMO_NAME = "calculator"
 DEMO_IMAGE = "python:3.12-slim"
-SOCKET = "/var/run/docker.sock"  # where docker-compose.watch.yml mounts the host's Docker or Podman socket
+SOCKET = "/var/run/docker.sock"
 NO_SOCKET = ("the server cannot reach Docker from its container: restart it with make up-watch "
              "(it mounts the Docker or Podman socket; make up does not)")
 DEAD_SOCKET = ("the Docker socket is mounted, but nothing answers on it ({error}). Podman: on the host run "
@@ -19,16 +19,12 @@ DEAD_SOCKET = ("the Docker socket is mounted, but nothing answers on it ({error}
 
 def daemon_unreachable(text):
     """True when docker failed because there is no daemon behind the socket, not for another reason."""
-    # debug: "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"
-    #   -> True (make up: no socket in the container). "Error: No such object: 30311b75d3f9" -> False
     text = text.lower()
     return any(sign in text for sign in ("cannot connect to the docker daemon", "docker.sock: connect:"))
 
 
 def unreachable_reason(text, socket_path=SOCKET):
     """What to tell the user: no socket at all (make up), or a socket with no daemon behind it."""
-    # debug: make up -> /var/run/docker.sock does not exist -> NO_SOCKET
-    # make up-watch, but podman.socket stopped or restarted since -> DEAD_SOCKET with docker's last line
     if not os.path.exists(socket_path):
         return NO_SOCKET
     lines = [line for line in text.strip().splitlines() if line.strip()]
@@ -37,9 +33,6 @@ def unreachable_reason(text, socket_path=SOCKET):
 
 class DockerDemoService:
     def __init__(self, settings, script_path, file_repository, target_files_repository):
-        # debug: script_path is bonus/demo/calculator_job.py. Its text is passed with python -c, so nothing but
-        # target/ is mounted into the demo container (not the Docker socket, not the Index).
-        # saved is the Target Project before the first demo run ({path: bytes}), or None: Reset demo restores it.
         self.settings = settings
         self.script_path = script_path
         self.file_repository = file_repository
@@ -52,21 +45,17 @@ class DockerDemoService:
 
     def save_target(self):
         """Remember target/ before the demo, once: a later run (after the fix) must not overwrite it."""
-        # debug: first Start demo crash: saved == {"calculator/core.py": b"class Calculator:...", ...}
         if self.saved is None:
             self.saved = self.target_files_repository.take_snapshot(self.current_paths())
 
     def reset(self):
         """Put target/ back as it was before the demo: the fix is undone, files the Patch created are removed."""
-        # debug: after a green fix, core.py has power and tests/test_power.py exists.
-        # return == {"ok": True, "restored": ["calculator/core.py", ...], "removed": ["tests/test_power.py"]}
-        # never started: return["ok"] == False
         if self.saved is None:
             return {"ok": False, "restored": [], "removed": [], "error": "nothing to reset: the demo has not run"}
         snapshot = dict(self.saved)
         removed = [path for path in self.current_paths() if path not in snapshot]
         for path in removed:
-            snapshot[path] = None  # restore_snapshot deletes a file whose saved bytes are None
+            snapshot[path] = None
         current = self.target_files_repository.take_snapshot(list(self.saved))
         restored = [path for path, data in self.saved.items() if current[path] != data]
         self.target_files_repository.restore_snapshot(snapshot)
@@ -74,14 +63,10 @@ class DockerDemoService:
         return {"ok": True, "restored": restored, "removed": removed, "error": None}
 
     def run_docker(self, args):
-        # debug: args == ["inspect", "30311b75d3f9", "--format", "..."] -> a CompletedProcess
         return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=60)
 
     def host_target_dir(self):
         """Where the Target Project is on the host. The server runs in a container and only knows its own path."""
-        # debug: this container's hostname is its id, e.g. "30311b75d3f9". Its mount on /workspace has
-        # Source "/Users/me/inception-of-context/target" -> that is returned.
-        # not in a container (no such id), or no mount there: return == None
         fmt = '{{range .Mounts}}{{if eq .Destination "' + self.settings.TARGET_DIR + '"}}{{.Source}}{{end}}{{end}}'
         done = self.run_docker(["inspect", socket.gethostname(), "--format", fmt])
         if daemon_unreachable(done.stderr):
@@ -91,9 +76,6 @@ class DockerDemoService:
 
     def start(self):
         """Replace container "calculator" with a fresh run of the demo job list. Return immediately."""
-        # debug: return == {"ok": True, "service": "calculator", "error": None}
-        # its log: four jobs, then the AttributeError traceback of Calculator.power
-        # no docker CLI or not in a container: return["ok"] == False with the reason
         try:
             target = self.host_target_dir()
         except ConnectionError as error:

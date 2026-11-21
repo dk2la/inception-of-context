@@ -8,8 +8,6 @@ import p3.services.sanity as sanity_module
 from p3.services.sanity import sanity_service
 
 
-# --- helpers ---
-
 def listing(folder):
     """Every file under folder, with its bytes, so a test can prove nothing was written."""
     found = {}
@@ -57,8 +55,6 @@ def delete(path):
     return {"path": path, "op": "delete"}
 
 
-# --- the runner and outside_target (#92) ---
-
 def test_a_normal_patch_is_allowed(run):
     assert run(patch_of(create("calculator/power.py", "def power(a, b):\n    return a ** b\n"))) is None
 
@@ -78,13 +74,13 @@ def test_the_runner_returns_the_first_reason_and_stops_there(run, monkeypatch):
 
 
 @pytest.mark.parametrize("path", [
-    "/etc/passwd",              # absolute
-    "../x.py",                  # climbs out
-    "calculator/../../x.py",    # starts inside, climbs out
-    "./../x.py",                # looks inside, resolves outside
-    "..\\x.py",                 # Windows-style separators
+    "/etc/passwd",
+    "../x.py",
+    "calculator/../../x.py",
+    "./../x.py",
+    "..\\x.py",
     "calculator\\..\\..\\x.py",
-    "\\etc\\passwd",            # Windows-style absolute
+    "\\etc\\passwd",
     "..",
 ])
 def test_a_path_outside_the_target_project_is_refused_and_named(run, path):
@@ -100,8 +96,6 @@ def test_a_path_that_only_contains_dots_in_a_name_is_allowed(run):
     assert run(patch_of(create("calculator/v1..2.py"), create("...py"))) is None
 
 
-# --- touches_config (#93) ---
-
 @pytest.mark.parametrize("entry", [
     modify("ioc.config.yml", "validate: 'true'\n"),
     delete("ioc.config.yml"),
@@ -110,7 +104,6 @@ def test_a_path_that_only_contains_dots_in_a_name_is_allowed(run):
     modify(".\\ioc.config.yml"),
 ])
 def test_the_config_file_is_never_touched_in_any_spelling(project, entry):
-    # Called directly, because 'calculator/../' would be refused earlier by outside_target.
     reason = sanity_service.touches_config(patch_of(entry), project)
     assert "ioc.config.yml" in reason and "Validation Command" in reason
 
@@ -128,8 +121,6 @@ def test_the_config_is_refused_by_the_runner(run):
 def test_files_with_similar_names_are_allowed(run):
     assert run(patch_of(create("docs/ioc.config.yml.md"), create("sub/ioc.config.yml"))) is None
 
-
-# --- too_many_files (#94) ---
 
 def files_named(count):
     return [create(f"new{i}.py") for i in range(count)]
@@ -159,8 +150,6 @@ def test_the_path_rule_runs_before_the_count(run):
     reason = run(patch_of(*files_named(3), create("../x.py")))
     assert "path outside target project" in reason
 
-
-# --- creates_existing (#95) ---
 
 def write(project, name, text):
     """Put a file in the temporary Target Project."""
@@ -192,8 +181,6 @@ def test_modify_and_delete_of_an_existing_file_are_ignored_by_this_rule(project)
     write(project, "a.py", "x = 1\n")
     assert sanity_service.creates_existing(patch_of(modify("a.py"), delete("a.py")), project) is None
 
-
-# --- empties_file (#96) ---
 
 def test_modify_to_real_content_is_allowed(project, run):
     write(project, "a.py", "x = 1\n")
@@ -239,8 +226,6 @@ def test_modify_of_a_missing_file_is_not_this_rules_problem(project):
     assert sanity_service.empties_file(patch_of(modify("missing.py", "")), project) is None
 
 
-# --- shrinks_too_much (#97) ---
-
 @pytest.fixture
 def hundred(project):
     """A file a.py of exactly 100 characters."""
@@ -273,20 +258,18 @@ def test_a_file_replaced_by_nothing_gets_the_more_specific_empty_reason(hundred,
     assert "empty" in run(patch_of(modify("a.py", "")))
 
 
-# --- stub_function (#98) ---
-
 @pytest.mark.parametrize("code", [
     "def f():\n    pass\n",
     "def f():\n    ...\n",
     "def f():\n    return None\n",
     "def f():\n    return\n",
-    "def f():\n    'Doc.'\n    pass\n",       # docstring plus pass
+    "def f():\n    'Doc.'\n    pass\n",
     "def f():\n    'Doc.'\n    ...\n",
-    "def f():\n    'Doc.'\n",                  # docstring only
+    "def f():\n    'Doc.'\n",
     "def f():\n    pass\n    pass\n",
     "async def f():\n    pass\n",
-    "def f():\n    def g():\n        pass\n    return g\n",  # nested
-    "def f(a):\n    if a:\n        return 1\n\n\ndef g():\n    pass\n",  # second function
+    "def f():\n    def g():\n        pass\n    return g\n",
+    "def f(a):\n    if a:\n        return 1\n\n\ndef g():\n    pass\n",
 ])
 def test_a_function_that_does_nothing_is_refused_and_named(run, code):
     reason = run(patch_of(create("new.py", code)))
@@ -309,10 +292,10 @@ def test_a_stub_is_refused_in_a_modify_too(project, run):
     "def f():\n    return 0\n",
     "def f():\n    'Doc.'\n    return 1\n",
     "def f():\n    raise NotImplementedError\n",
-    "class C:\n    pass\n",                  # a class is not a function
+    "class C:\n    pass\n",
     "class C(Exception): ...\n",
     "x = 1\n",
-    "def f(:\n",                              # syntax error: py_compile reports it better
+    "def f(:\n",
 ])
 def test_real_code_and_broken_syntax_are_not_stubs(run, code):
     assert run(patch_of(create("new.py", code))) is None
@@ -322,8 +305,6 @@ def test_only_python_files_are_parsed_and_deletes_are_ignored(run):
     assert run(patch_of(create("notes.md", "def f(): pass"), delete("main.py"))) is None
 
 
-# --- delete and modify of a missing file: no rule judges them ---
-
 def test_deleting_a_big_file_is_allowed_by_every_rule(run):
     assert run(patch_of(delete("calculator/core.py"), delete("calculator/cli.py"))) is None
 
@@ -331,8 +312,6 @@ def test_deleting_a_big_file_is_allowed_by_every_rule(run):
 def test_modify_of_a_missing_file_is_not_refused_by_any_rule(run):
     assert run(patch_of(modify("missing.py", "x = 1\n"), delete("also_missing.py"))) is None
 
-
-# --- has_marker (#99) ---
 
 def test_content_with_a_retrieval_marker_is_refused_wherever_it_is(run):
     at_start = "=== FILE: calculator/core.py ===\nclass Calculator: ...\n"
@@ -372,9 +351,6 @@ def test_the_real_target_project_has_no_stubs(project, run):
     assert sanity_service.stub_function(patch_of(modify("calculator/core.py", old)), project) is None
 
 
-# --- review fixes: folders and upper-case names ---
-
-
 @pytest.mark.parametrize("path", ["calculator", "calculator/", ".", "tests"])
 @pytest.mark.parametrize("make", [modify, delete])
 def test_a_folder_is_not_a_file(run, make, path):
@@ -382,12 +358,9 @@ def test_a_folder_is_not_a_file(run, make, path):
 
 
 def test_ioc_config_in_other_letter_case_is_still_the_config_file(run):
-    # on a case-insensitive disk (macOS bind mount) these names are the same file
     for path in ["IOC.config.yml", "./Ioc.Config.YML"]:
         assert "ioc.config.yml" in run(patch_of(modify(path, "validate: true\n")))
 
-
-# --- weakens_tests ---
 
 TEST_CORE = "tests/test_core.py"
 
@@ -438,8 +411,6 @@ def test_a_test_file_that_does_not_parse_is_left_to_the_validation_command(run, 
     content = read_test_core(project) + "\ndef test_broken(:\n"
     assert run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]}) is None
 
-
-# --- changes_nothing: a Patch that leaves every file as it is ---
 
 def same(project, path):
     with open(os.path.join(project, path), encoding="utf-8") as f:

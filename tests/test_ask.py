@@ -34,9 +34,6 @@ def index_files(target, files):
         indexer_service.reindex_file(path)
 
 
-# --- known_symbols ---
-
-
 def test_known_symbols_lists_the_whole_file_of_the_chunk(temp_index):
     index_files(temp_index, {"calc.py": CALC, "other.py": OTHER})
     symbols = ask_service.known_symbols([{"path": "calc.py"}])
@@ -76,8 +73,6 @@ def test_known_symbols_ignores_headings_and_config_keys(temp_index):
     assert ask_service.known_symbols([{"path": "README.md"}, {"path": "app.yml"}]) == []
 
 
-# --- build_answer_prompt ---
-
 DIVIDE = {
     "path": "calc.py", "start_line": 5, "end_line": 6, "name": "Calculator.divide",
     "text": "    def divide(self, a, b):\n        return a / b",
@@ -115,8 +110,6 @@ def test_prompt_never_contains_the_patch_file_marker():
     prompt = ask_service.build_answer_prompt("What is in calc.py?", [DIVIDE, GREET], SYMBOLS)
     assert "=== FILE:" not in prompt
 
-
-# --- find_symbol ---
 
 SUBDIVIDE = "def subdivide(n):\n    return n / 2\n"
 
@@ -178,8 +171,6 @@ def test_find_symbol_lists_every_match_in_path_and_line_order(temp_index):
     assert [(c["path"], c["name"]) for c in found] == [("a.py", "A.run"), ("a.py", "run"), ("b.py", "run")]
 
 
-# --- symbols_in_file ---
-
 CORE_METHODS = ["Calculator.add", "Calculator.subtract", "Calculator.multiply", "Calculator.divide"]
 
 
@@ -213,9 +204,6 @@ def test_symbols_in_file_shows_both_files_that_share_a_short_name(temp_index):
     index_files(temp_index, {"a/utils.py": "def one():\n    pass\n", "b/utils.py": "def two():\n    pass\n"})
     found = ask_service.symbols_in_file("utils.py")
     assert [(c["path"], c["name"]) for c in found] == [("a/utils.py", "one"), ("b/utils.py", "two")]
-
-
-# --- ask: a free Question goes through the model ---
 
 
 def test_ask_returns_the_models_answer_without_surrounding_whitespace(client, fake_llm):
@@ -266,11 +254,8 @@ def test_ask_lets_a_model_error_through(client, fake_llm):
         ask_service.ask("How does division work?")
 
 
-# --- ask: symbol questions are answered from the Index, without the model ---
-
-
 def test_a_missing_function_is_answered_no_without_the_model(client, fake_llm):
-    fake_llm.replies = ["Yes, power exists"]  # the model must not even be asked
+    fake_llm.replies = ["Yes, power exists"]
     result = ask_service.ask("Is there a function power?")
     assert result["answer"].startswith("No")
     assert '"power"' in result["answer"]

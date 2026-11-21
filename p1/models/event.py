@@ -5,7 +5,7 @@ EVENT_TYPES = ("indexed", "deleted")
 
 
 class Event(TypedDict):
-    time: float  # time.time() when it happened
-    type: str  # one of EVENT_TYPES
-    path: str  # the file, relative to the Target Project
-    chunks: int  # how many Chunks the file has now
+    time: float
+    type: str
+    path: str
+    chunks: int

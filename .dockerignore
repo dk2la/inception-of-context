@@ -1,7 +1,6 @@
 .git
 .venv
 venv
-# The Target Project is mounted at /workspace when the container runs.
 target/
 __pycache__
 *.pyc

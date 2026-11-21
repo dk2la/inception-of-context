@@ -25,8 +25,6 @@ PATCH_RULES = f"""Reply with ONLY a JSON object of this shape:
 class PatchLoopService:
     def __init__(self, settings, llm_client, file_repository, search_service, attempt_factory,
                  target_files_repository, sanity_service, validation_service):
-        # debug: settings.PATCH_MODEL == "qwen2.5-coder:3b", settings.MAX_ATTEMPTS == 3
-        # patch_lock starts unlocked. One POST /patch holds it until the loop returns.
         self.settings = settings
         self.llm_client = llm_client
         self.file_repository = file_repository
@@ -35,16 +33,10 @@ class PatchLoopService:
         self.target_files_repository = target_files_repository
         self.sanity_service = sanity_service
         self.validation_service = validation_service
-        self.patch_lock = threading.Lock()  # a second Patch Loop would snapshot the files the first one is changing
+        self.patch_lock = threading.Lock()
 
     def parse_patch(self, text):
         """Read the model's JSON answer. Return (patch, None), or (None, reason) if its shape is wrong."""
-        # debug: text is the raw reply of qwen2.5-coder:3b.
-        # '{"summary": "add power", "files": [{"path": "calculator/core.py", "op": "modify", "content": "..."}]}'
-        # return == ({"summary": "add power", "files": [...]}, None)
-        # text "not json" -> return == (None, "the model did not return valid JSON: ...")
-        # op "rename" -> return == (None, "file 1: op must be create, modify or delete, got 'rename'")
-        # op "delete" -> that file's content is forced to ""
         try:
             data = json.loads(text)
         except json.JSONDecodeError as e:
@@ -72,22 +64,13 @@ class PatchLoopService:
 
     def last_lines(self, text, count=40):
         """The end of a log is where the error is, so that is the part we keep."""
-        # debug: text is a pytest log of 80 lines, count == 40.
-        # return is the last 40 lines joined by "\n", where the AssertionError sits.
         return "\n".join(text.splitlines()[-count:])
 
     def build_patch_prompt(self, intent, k, previous=None):
         """The text for one Attempt. previous is None, or {"patch": the last Patch or None, "error": why it failed}."""
-        # debug: intent == "add a power function to Calculator", k == 5, previous == None
-        # names includes "calculator/core.py", "tests/test_core.py", "main.py"
-        # search hits calculator/core.py, so one block starts "=== FILE: calculator/core.py ==="
-        # the model receives that file whole, then "INTENT: ..." and PATCH_RULES
-        # attempt 2: previous == {"patch": {...}, "error": "validation failed:\n..."}
-        # the prompt then also ends with "YOUR PREVIOUS ATTEMPT FAILED."
         names = [self.file_repository.relative_path(path)
                  for path in self.file_repository.list_files(self.settings.TARGET_DIR)]
         parts = ["FILES IN THE PROJECT:\n" + "\n".join(names)]
-        # The Chunks only say which files matter; the model gets each of those files whole, once.
         for path in dict.fromkeys(chunk["path"] for chunk in self.search_service.search(intent, k)):
             text = self.file_repository.read_text(self.file_repository.full_path(path))
             if text is not None:
@@ -102,13 +85,6 @@ class PatchLoopService:
 
     def run_attempt(self, intent, k, previous, number, keep=True):
         """One Attempt: generate, parse, Sanity Checks, snapshot, apply, validate. A failed Attempt is rolled back."""
-        # debug: number == 1, intent == "add a power function to Calculator", k == 5
-        # attempt starts {"number": 1, "ok": False, "patch": None, "error": None, ...}
-        # the model call uses PATCH_MODEL "qwen2.5-coder:3b" with json_mode == True
-        # bad JSON or a sanity refusal: return before any disk write, attempt["ok"] stays False
-        # pytest of the calculator passes: attempt["ok"] == True, the new core.py stays on disk
-        # pytest fails: restore_snapshot writes the old bytes back, attempt["ok"] stays False
-        # keep == False (the bonus pull request): a green Patch is rolled back too, and waits for Merge
         attempt = self.attempt_factory.new_attempt(number)
         text = self.llm_client.call_llm(
             self.settings.PATCH_MODEL, self.build_patch_prompt(intent, k, previous), json_mode=True)
@@ -122,9 +98,6 @@ class PatchLoopService:
 
     def try_patch(self, attempt, patch, keep=True):
         """Sanity Checks, snapshot, apply, validate one parsed Patch. A failure, or keep == False, rolls it back."""
-        # debug: patch is {"summary": "add power", "files": [...]}, already parsed.
-        # run_attempt calls this after the model call. The bonus Merge calls it with the stored Patch.
-        # keep == True, pytest green: the new files stay on disk. keep == False: they are restored after pytest.
         attempt["patch"] = patch
         reason = self.sanity_service.check_patch(patch, self.settings.TARGET_DIR)
         if reason:
@@ -141,28 +114,22 @@ class PatchLoopService:
             if ok:
                 attempt["ok"] = True
                 if keep:
-                    return attempt  # the Watcher reindexes the changed files
+                    return attempt
             else:
                 attempt["error"] = "validation failed:\n" + self.last_lines(log)
         except Exception as e:
             if attempt["apply"] is None:
                 attempt["apply"] = {"ok": False, "error": str(e)}
                 attempt["error"] = "could not apply the patch: " + str(e)
-            else:  # applying worked, but the Validation Command could not run
+            else:
                 attempt["validation"] = {"ok": False, "log": str(e)}
                 attempt["error"] = "validation failed:\n" + str(e)
-        # Whatever failed, the next Attempt starts from the original code. A green keep == False Patch is undone too.
         self.target_files_repository.restore_snapshot(snapshot)
         return attempt
 
     def run_patch_loop(self, intent, k=5, max_attempts=settings.MAX_ATTEMPTS):
         """Try up to max_attempts (1 to MAX_ATTEMPTS) Attempts, telling the model why the last one failed."""
-        # debug: POST /patch {"intent": "add a power function to Calculator", "k": 5, "max_attempts": 3}
-        # max_attempts 0 or 99 is clamped to the range 1..3. A second POST /patch waits on the lock.
-        # attempt 1 fails: previous == {"patch": that JSON or None, "error": why it failed}
-        # attempt 2 is ok: return == {"status": "success", "attempts": [a1, a2], "patch": a2["patch"]}
-        # three failures: return == {"status": "failed", "attempts": [a1, a2, a3], "patch": None}
-        with self.patch_lock:  # one Patch Loop at a time; another request waits here
+        with self.patch_lock:
             attempts = []
             previous = None
             for number in range(1, max(1, min(self.settings.MAX_ATTEMPTS, max_attempts)) + 1):

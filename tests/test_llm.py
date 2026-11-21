@@ -64,9 +64,6 @@ def test_timeout_raises_llm_error(monkeypatch):
         llm_client.call_llm(settings.ANSWER_MODEL, "hi")
 
 
-# --- streaming: the reply arrives in pieces, and GET /llm/live can read it while it is written ---
-
-
 def test_a_streamed_reply_is_joined_and_kept_as_the_live_output(monkeypatch):
     lines = b'{"response": "Hel", "done": false}\n\n{"response": "lo", "done": true}\n{"response": "ignored"}\n'
     monkeypatch.setattr(llm_module.urllib.request, "urlopen", fake_urlopen([], lines))

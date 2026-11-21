@@ -1,5 +1,3 @@
-# On 42 computers .school.env (written by `make school`) is loaded here: DOCKER_HOST, and COMPOSE when the
-# machine has docker-compose or podman-compose instead of the `docker compose` plugin.
 -include .school.env
 COMPOSE ?= docker compose
 
@@ -14,14 +12,9 @@ Q ?= what functions are in core.py?
 INTENT ?= add a power function to Calculator
 JSON = -H 'Content-Type: application/json'
 
-# The tests also run inside the container:
-#   docker compose run --rm -w /workspace ioc python -m pytest -q   (the Target Project)
-#   docker compose run --rm ioc python -m pytest -q                 (this repository)
-
 build:
 	$(COMPOSE) build ioc
 
-# Starts Ollama and downloads each model only if it is missing.
 models:
 	$(COMPOSE) up -d ollama
 	until $(COMPOSE) exec -T ollama ollama list > /dev/null 2>&1; do sleep 1; done
@@ -33,10 +26,7 @@ up: build models
 	$(COMPOSE) up -d ioc
 	@echo "IoC is running at http://localhost:8000"
 
-# Bonus: the same as up, plus the host's Docker socket, so Docker log watch can read other containers' logs.
 WATCH = $(COMPOSE) -f docker-compose.yml -f docker-compose.watch.yml
-# The host socket mounted into ioc: DOCKER_HOST if it is a unix socket, Podman's user socket on a machine where
-# `docker` is Podman (42 computers), else Docker's default. Override with DOCKER_SOCK=/path/to/socket.
 DOCKER_SOCK ?= $(shell scripts/docker_sock.sh)
 export DOCKER_SOCK
 up-watch: build models
@@ -45,28 +35,22 @@ up-watch: build models
 	$(WATCH) up -d ioc
 	@echo "IoC is running at http://localhost:8000 (Docker log watch enabled, socket $(DOCKER_SOCK))"
 
-# Docker log watch not working? Shows the socket on the host and what docker says from inside ioc.
 watch-check:
 	@echo "host socket: $(DOCKER_SOCK)"; ls -l "$(DOCKER_SOCK)" || true
 	-$(WATCH) exec ioc ls -l /var/run/docker.sock
 	-$(WATCH) exec ioc docker version
 
-# Indexes the Target Project once. Run it while the server is stopped (one writer per Index).
 p1:
 	$(COMPOSE) run --rm ioc python -m p1.index /workspace
 
-# flake8, using .flake8. The line limit is 120: the debug notes are longer than 79.
 lint:
 	python3 -m flake8 p1 p2 p3 bonus tests
 
-# Every test of this repository (unit + end-to-end, with a fake model), with the coverage report,
-# then the Target Project's own tests. Runs in the ioc image, on the code of this folder.
 test: build
 	$(COMPOSE) run --rm --no-deps -v "$(CURDIR)":/app -e TARGET_DIR=/app/target -e PYTHONDONTWRITEBYTECODE=1 \
 		-e COVERAGE_FILE=/tmp/.coverage ioc sh -c "python -m coverage run -m pytest -q -p no:cacheprovider && python -m coverage report"
 	$(COMPOSE) run --rm --no-deps -w /workspace -e PYTHONDONTWRITEBYTECODE=1 ioc python -m pytest -q -p no:cacheprovider
 
-# ---------- 42 school computers ----------
 school:        ## 42 computers: Docker's images and volumes into sgoinfre, background build (scripts/school_setup.sh)
 	./scripts/school_setup.sh
 
@@ -79,11 +63,8 @@ logs:
 down:
 	$(COMPOSE) down
 
-# Also deletes the Index and the downloaded models (several GB).
 clean:
 	$(COMPOSE) down -v
-
-# ---------- Check the running system (after make up). Each target is one curl; override Q=... or INTENT=... ----------
 
 help:          ## list the commands
 	@grep -E '^[a-z-]+:.*## ' Makefile | sed 's/:.*## /\t/'

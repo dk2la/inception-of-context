@@ -8,7 +8,6 @@ from bonus.services.docker_watch import docker_watch_service
 
 class DockerWatchView:
     def __init__(self, docker_watch_service, docker_demo_service):
-        # debug: POST /bonus/docker/watch, POST /bonus/docker/stop, and POST /bonus/docker/demo (the make crash button).
         self.docker_watch_service = docker_watch_service
         self.docker_demo_service = docker_demo_service
         self.router = APIRouter()
@@ -18,21 +17,15 @@ class DockerWatchView:
         self.router.add_api_route("/bonus/docker/demo/reset", self.reset, methods=["POST"])
 
     def watch(self, req: DockerWatchRequest):
-        # debug: req.service == "calculator", req.intent == "fix the crash in Calculator.divide"
-        # docker is present: return == {"ok": True, "running": True, "service": "calculator", "error": None}
-        # no docker CLI: return["ok"] == False, error == "docker CLI is not available"
         return self.docker_watch_service.start(req.service, req.intent)
 
     def stop(self):
-        # debug: POST /bonus/docker/stop. return == {"running": False, "service": "calculator", "error": None}
         return self.docker_watch_service.stop()
 
     def demo(self):
-        # debug: POST /bonus/docker/demo -> {"ok": True, "service": "calculator", "error": None}
         return self.docker_demo_service.start()
 
     def reset(self):
-        # debug: POST /bonus/docker/demo/reset -> {"ok": True, "restored": ["calculator/core.py"], "removed": [], ...}
         return self.docker_demo_service.reset()
 
 

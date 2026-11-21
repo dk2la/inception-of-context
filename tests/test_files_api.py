@@ -12,9 +12,6 @@ def write(target, name, text):
     return path
 
 
-# --- GET /files ---
-
-
 def test_files_lists_every_indexed_file_with_its_chunk_count(client):
     response = client.get("/files")
     assert response.status_code == 200
@@ -44,7 +41,7 @@ def test_files_never_lists_skipped_paths(client, temp_index):
 
 def test_files_follows_the_index_when_a_file_is_added_and_deleted(client, temp_index):
     path = write(temp_index, "extra.md", "# One\ntext\n\n# Two\nmore text\n")
-    indexer_service.reindex_file(path)  # what the Watcher does
+    indexer_service.reindex_file(path)
     assert {"path": "extra.md", "chunks": 2} in client.get("/files").json()
     os.remove(path)
     indexer_service.reindex_file(path)
@@ -54,9 +51,6 @@ def test_files_follows_the_index_when_a_file_is_added_and_deleted(client, temp_i
 def test_files_of_an_empty_index_is_an_empty_list(client):
     chroma_db.get_collection().delete(where={"path": {"$ne": ""}})
     assert client.get("/files").json() == []
-
-
-# --- GET /file ---
 
 
 def test_file_returns_the_content_and_sorted_chunk_boundaries(client, temp_index):
@@ -78,7 +72,7 @@ def test_file_that_does_not_exist_is_404(client):
 
 
 def test_file_outside_the_target_project_is_404(client, temp_index):
-    write(os.path.dirname(temp_index), "secret.txt", "secret")  # a real file, just outside the Target Project
+    write(os.path.dirname(temp_index), "secret.txt", "secret")
     for path in ["../secret.txt", "calculator/../../secret.txt", "/etc/passwd"]:
         assert client.get("/file", params={"path": path}).status_code == 404, path
 
@@ -106,9 +100,6 @@ def test_file_that_is_skipped_or_binary_or_a_folder_is_404(client, temp_index):
 
 def test_file_without_a_path_parameter_is_422(client):
     assert client.get("/file").status_code == 422
-
-
-# --- GET /chunks ---
 
 
 def test_chunks_first_page_has_the_documented_shape(client):

@@ -12,9 +12,6 @@ from p1.services.indexer import indexer_service
 from p1.services.watcher import watcher_service
 
 
-# --- the event list ---
-
-
 def test_add_event_appends_an_event_with_the_time_it_happened(monkeypatch):
     monkeypatch.setattr(event_repository, "events", [])
     before = time.time()
@@ -37,9 +34,6 @@ def test_add_event_refuses_an_unknown_type(monkeypatch):
     with pytest.raises(ValueError):
         event_repository.add_event("changed", "a.py", 1)
     assert event_repository.events == []
-
-
-# --- watch(): slower tests that use the real filesystem and wait for its events ---
 
 
 def wait_until(condition, seconds=5):
@@ -120,7 +114,6 @@ def test_watcher_ignores_temporary_hidden_and_skipped_files(temp_index, monkeypa
         write(temp_index, "b.py.ioc.tmp", "def b():\n    pass\n")
         write(temp_index, ".swap.py", "def s():\n    pass\n")
         write(temp_index, "__pycache__/c.py", "def c():\n    pass\n")
-        # Written last, so it is the proof we waited long enough.
         write(temp_index, "marker.py", "def m():\n    return 1\n")
         assert wait_until(lambda: happened("indexed", "marker.py"))
         time.sleep(1)
@@ -137,7 +130,7 @@ def test_watcher_watches_new_subfolders_and_reports_only_files(temp_index, monke
     observer = watcher_service.watch()
     try:
         os.makedirs(os.path.join(temp_index, "sub"))
-        write(temp_index, "sub/a.py", "def a():\n    return 1\n")  # files in a new subfolder are watched too
+        write(temp_index, "sub/a.py", "def a():\n    return 1\n")
         assert wait_until(lambda: happened("indexed", "sub/a.py"))
         assert all(e["path"] == "sub/a.py" for e in event_repository.events)
     finally:
@@ -210,9 +203,6 @@ def test_replacing_a_file_through_an_ioc_tmp_file_reindexes_the_real_file_only(t
         observer.join()
 
 
-# --- WATCH_POLLING ---
-
-
 def test_watch_polling_uses_the_polling_observer_and_still_indexes_files(temp_index, monkeypatch, capsys):
     """Slower test: polling looks at the folder about once a second."""
     from watchdog.observers.polling import PollingObserver
@@ -247,9 +237,6 @@ def test_without_watch_polling_one_the_normal_observer_is_used(temp_index, monke
         observer.join()
 
 
-# --- python -m p1.index --watch ---
-
-
 def test_console_command_with_watch_prints_each_event_once_and_stops_on_ctrl_c(temp_index, monkeypatch, capsys):
     from types import SimpleNamespace
 
@@ -264,10 +251,10 @@ def test_console_command_with_watch_prints_each_event_once_and_stops_on_ctrl_c(t
 
     def fake_sleep(seconds):
         sleeps.append(seconds)
-        if len(sleeps) == 1:  # the Watcher "does" two things while main() sleeps
+        if len(sleeps) == 1:
             event_repository.add_event("indexed", "a.py", 1)
             event_repository.add_event("deleted", "b.md", 0)
-        elif len(sleeps) == 2:  # nothing new: nothing may be printed again
+        elif len(sleeps) == 2:
             pass
         else:
             raise KeyboardInterrupt

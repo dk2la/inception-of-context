@@ -4,9 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Inception-of-Context</title>
-<link rel="icon" href="data:,"> <!-- no icon; stops the browser asking the server for /favicon.ico -->
+<link rel="icon" href="data:,">
 <style>
-  /* ---------- Design tokens: dark first, light when the system asks for it ---------- */
   :root {
     color-scheme: dark;
     --bg: #0b0d12;
@@ -64,7 +63,6 @@
     }
   }
 
-  /* ---------- Base ---------- */
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   html, body { margin: 0; background: var(--bg); color: var(--text); }
@@ -83,7 +81,6 @@
   .fail { color: var(--fail); }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
-  /* ---------- Top bar ---------- */
   .topbar {
     position: sticky; top: 0; z-index: 10;
     display: flex; align-items: center; gap: 16px; padding: 0 24px; height: 56px;
@@ -118,7 +115,6 @@
   .live.off .dot { background: var(--fail); }
   @keyframes ping { 0% { transform: scale(0.6); opacity: 0.7; } 100% { transform: scale(1.6); opacity: 0; } }
 
-  /* ---------- Tabs ---------- */
   nav {
     display: flex; gap: 2px; padding: 0 24px; border-bottom: 1px solid var(--border);
     background: var(--bg); overflow-x: auto;
@@ -138,7 +134,6 @@
     font: 10.5px var(--mono); color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px;
   }
 
-  /* ---------- Layout ---------- */
   main { max-width: 1240px; margin: 0 auto; padding: 24px; }
   .tab { display: flex; flex-direction: column; gap: 16px; animation: fade 0.18s ease-out; }
   @keyframes fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
@@ -150,14 +145,12 @@
   .grid-2 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; }
   @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } .brand-sub, .top-chips { display: none; } }
 
-  /* ---------- Error banner ---------- */
   #error {
     margin: 0 0 16px; padding: 10px 14px; border-radius: var(--radius-sm); white-space: pre-line;
     color: var(--fail); background: var(--fail-soft); border: 1px solid color-mix(in srgb, var(--fail) 35%, transparent);
   }
   #error:empty { display: none; }
 
-  /* ---------- Buttons and fields ---------- */
   .btn {
     display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: var(--radius-sm);
     border: 1px solid var(--border-strong); background: var(--bg-raised); color: var(--text); font-weight: 500;
@@ -201,7 +194,6 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ---------- Badges ---------- */
   .badge {
     display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border-radius: 5px;
     font: 500 11.5px var(--mono); background: var(--bg-sunken); color: var(--text-dim); border: 1px solid var(--border); white-space: nowrap;
@@ -211,7 +203,6 @@
   .badge.warn { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
   .badge.accent { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
 
-  /* ---------- Overview ---------- */
   #status-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
   @media (max-width: 1100px) { #status-cards { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); } }
   .card { padding: 14px 16px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); min-width: 0; }
@@ -239,7 +230,6 @@
   #activity .count { font: 12px var(--mono); color: var(--text-dim); }
   .empty { padding: 28px 16px; text-align: center; color: var(--text-faint); font-size: 13px; }
 
-  /* ---------- Files ---------- */
   .split { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start; }
   @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
   #file-list { display: flex; flex-direction: column; padding: 6px; max-height: 75vh; overflow-y: auto; }
@@ -271,7 +261,6 @@
   }
   .boundary:hover { background: var(--accent-soft); }
 
-  /* ---------- Explorer ---------- */
   .table-wrap { overflow-x: auto; }
   #chunk-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   #chunk-table th {
@@ -287,7 +276,6 @@
   .pager { display: flex; align-items: center; gap: 8px; }
   #chunks-range { font: 12px var(--mono); color: var(--text-dim); min-width: 150px; text-align: center; }
 
-  /* ---------- Ask & Retrieve ---------- */
   #answer { padding: 18px 20px; }
   #answer-label { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   #answer-text { white-space: pre-wrap; font-size: 14.5px; line-height: 1.65; }
@@ -304,7 +292,6 @@
   .source pre { padding: 12px 14px; background: var(--code-bg); border-top: 1px solid var(--border); line-height: 1.55; }
   .section-title { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 
-  /* ---------- Patch Loop ---------- */
   .banner { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-radius: var(--radius); border: 1px solid var(--border); }
   .banner.ok { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
   .banner.fail { background: var(--fail-soft); border-color: color-mix(in srgb, var(--fail) 35%, transparent); }
@@ -343,7 +330,6 @@
   .patch-file .path { font: 12.5px var(--mono); color: var(--text); }
   #patch-unavailable { padding: 18px 20px; }
 
-  /* ---------- System map: one lane per part, nodes light up as the system works ---------- */
   #system-map { display: flex; flex-direction: column; }
   .lane { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 16px; align-items: center; padding: 14px 16px; }
   .lane + .lane { border-top: 1px solid var(--border); }
@@ -373,7 +359,6 @@
   .wire.active { background: linear-gradient(90deg, transparent, var(--accent), transparent); background-size: 200% 100%; animation: flowing 0.9s linear infinite; }
   @keyframes flowing { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
-  /* ---------- 3D View: plain CSS 3D, no libraries ---------- */
   :root {
     --scene-bg: #04140d;
     --scene-glow: rgba(60, 207, 145, 0.22);
@@ -475,7 +460,6 @@
   .beam.llm { --beam: #f472b6; }
   @keyframes beam-flow { to { background-position: 22px 0; } }
 
-  /* The dino: a mascot made of voxels. It sways while idle and jumps when a Patch passes. */
   .dino, .voxel { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
   .dino { --dc: #ff8a3d; cursor: pointer; transform-origin: 80px 13px; animation: dino-idle 2.6s ease-in-out infinite; }
   .dino .face { border-color: rgba(0, 0, 0, 0.16); }
@@ -515,7 +499,6 @@
   .scene-legend .ok { background: var(--ok); }
   .scene-legend .fail { background: var(--fail); }
   .scene-legend .skipped { background: #5b6273; }
-  /* the three router branches: small cubes in front of the Router; the chosen one glows */
   .cube.mini .glyph { font-size: 13px; }
   .cube.mini .card3d b { font: 600 10.5px var(--mono); }
   .cube.mini .card3d span { display: none; }
@@ -598,7 +581,6 @@
 <main>
 <div id="error" role="alert"></div>
 
-<!-- ======================= Overview ======================= -->
 <section class="tab" id="tab-overview" role="tabpanel">
   <div class="page-head">
     <div>
@@ -624,7 +606,6 @@
   </div>
 </section>
 
-<!-- ======================= Files ======================= -->
 <section class="tab" id="tab-files" role="tabpanel" hidden>
   <div class="page-head">
     <div>
@@ -645,7 +626,6 @@
   </div>
 </section>
 
-<!-- ======================= ChromaDB Explorer ======================= -->
 <section class="tab" id="tab-explorer" role="tabpanel" hidden>
   <div class="page-head">
     <div>
@@ -670,7 +650,6 @@
   </div>
 </section>
 
-<!-- ======================= Ask & Retrieve ======================= -->
 <section class="tab" id="tab-ask" role="tabpanel" hidden>
   <div class="page-head">
     <div>
@@ -706,7 +685,6 @@
   <div id="results"></div>
 </section>
 
-<!-- ======================= Patch Loop ======================= -->
 <section class="tab" id="tab-patch" role="tabpanel" hidden>
   <div class="page-head">
     <div>
@@ -735,7 +713,6 @@
     <div id="patch-result" class="tab"></div>
   </div>
 </section>
-<!-- ======================= 3D View ======================= -->
 <section class="tab" id="tab-scene" role="tabpanel" hidden>
   <div class="page-head">
     <div>
@@ -805,26 +782,22 @@
 </main>
 
 <script>
-// ---------- Helpers ----------
 
-// Calls the server and returns the JSON reply. A bad status throws an Error like "503 <detail>".
 async function api(path, options) {
   const response = await fetch(path, options);
   if (response.ok) return response.json();
   const text = await response.text();
   let detail = text;
   try {
-    detail = JSON.parse(text).detail; // FastAPI errors look like {"detail": "..."}
-  } catch (e) {} // not JSON: keep the plain text
+    detail = JSON.parse(text).detail;
+  } catch (e) {}
   throw new Error(response.status + " " + (typeof detail === "string" ? detail : text));
 }
 
-// Sends a JSON body with POST and returns the JSON reply.
 function post(path, body) {
   return api(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
 }
 
-// Makes an element. The text is set with textContent, so it is always shown as plain text, never as HTML.
 function el(tag, text = "", className = "") {
   const element = document.createElement(tag);
   element.textContent = text;
@@ -832,7 +805,6 @@ function el(tag, text = "", className = "") {
   return element;
 }
 
-// Makes an element and appends children (elements or strings).
 function make(tag, className, ...children) {
   const element = el(tag, "", className);
   element.append(...children);
@@ -843,14 +815,12 @@ function badge(text, tone = "") {
   return el("span", text, "badge " + tone);
 }
 
-// A thin bar filled to fraction (0..1).
 function meter(fraction) {
   const bar = el("span");
   bar.style.width = Math.max(2, Math.round(Math.min(1, Math.max(0, fraction)) * 100)) + "%";
   return make("div", "meter", bar);
 }
 
-// Writes a status line into the element with this id: grey normally (with a spinner when busy), red for an error.
 function showMessage(id, text, isError = false, busy = false) {
   const box = document.getElementById(id);
   box.replaceChildren();
@@ -859,7 +829,6 @@ function showMessage(id, text, isError = false, busy = false) {
   box.className = "status-line " + (isError ? "fail" : "muted");
 }
 
-// Each part of the page has its own error slot, so one part clearing its message never hides another's.
 const errors = {};
 
 function setError(name, message) {
@@ -873,10 +842,6 @@ function setLive(on, text) {
   live.className = "live " + (on ? "on" : "off");
   document.getElementById("live-text").textContent = text;
 }
-
-// ---------- System map ----------
-// One lane per part of the subject. Each node is [key, title, subtitle]. A node's element carries
-// data-node="<lane>-<key>", so the same node can be drawn in several places and all copies change together.
 
 const LANES = {
   p1: {title: "Index & Watcher", nodes: [
@@ -910,7 +875,6 @@ function drawSystemMap() {
   for (const slot of document.querySelectorAll(".lane-slot")) slot.replaceChildren(laneElement(slot.dataset.lane));
 }
 
-// state is "", "active", "ok", "fail" or "skipped". The wire after a node follows it, so the flow reads left to right.
 function setNode(lane, key, state, stat) {
   cube3d(`${lane}-${key}`, state, stat);
   for (const node of document.querySelectorAll(`[data-node="${lane}-${key}"]`)) {
@@ -932,7 +896,6 @@ function resetLane(lane) {
   for (const [key] of LANES[lane].nodes) setNode(lane, key, "", "");
 }
 
-// Part 1 replays one Watcher event: the change runs through the chain, then everything is green again.
 let p1Busy = null;
 function animateIndexing(event) {
   clearTimeout(p1Busy);
@@ -950,9 +913,6 @@ function animateIndexing(event) {
   }, steps.length * 280 + 900);
 }
 
-// ---------- Tabs ----------
-
-// Tab name -> function to run each time the tab is shown.
 const tabLoaders = {files: loadFileList, explorer: loadChunks};
 const TABS = ["overview", "files", "explorer", "ask", "patch", "scene"];
 
@@ -969,12 +929,9 @@ function showTab(name) {
   if (tabLoaders[name]) tabLoaders[name]();
 }
 
-// ---------- Overview ----------
+let answerModel = "the local model";
+let patchModel = "the coder model";
 
-let answerModel = "the local model"; // the name shown under an answer; replaced by the real one from /status
-let patchModel = "the coder model"; // the Part 3 model, also from /status; tells the live output which cube it belongs to
-
-// Draws the status cards from GET /status, and the chips in the top bar.
 async function loadStatus() {
   try {
     const s = await api("/status");
@@ -999,7 +956,7 @@ async function loadStatus() {
       container.append(make("div", "card", el("small", label), el("strong", value ?? "-")));
     }
     setLive(true, "Live");
-    setNode("p1", "embedder", "ok", "local · offline"); // it runs inside Chroma: if /status answers, it works
+    setNode("p1", "embedder", "ok", "local · offline");
     setNode("p1", "chroma", "ok", `${s.chunks} chunks`);
     setNode("p1", "chunker", "ok");
     if (!p1Busy) { setNode("p1", "watcher", "ok"); setLaneStatus("p1", "in sync", "ok"); }
@@ -1011,9 +968,8 @@ async function loadStatus() {
   }
 }
 
-let lastCounts = null; // path -> Chunk count at the previous refresh; null before the first one
+let lastCounts = null;
 
-// Fills the "Indexed files" list from GET /files: a bar per file. A row whose count changed flashes.
 async function loadFiles() {
   try {
     const files = await api("/files");
@@ -1051,25 +1007,19 @@ function refreshOverview() {
   loadFiles();
 }
 
-// One line of the activity feed: time, type, path, Chunk count.
 function eventItem(event) {
-  const time = new Date(event.time * 1000).toLocaleTimeString(); // event.time is in seconds
+  const time = new Date(event.time * 1000).toLocaleTimeString();
   const tone = event.type === "deleted" ? "fail" : "ok";
   return make("li", event.type, el("span", time, "time"), badge(event.type, tone), el("span", event.path, "path"),
               el("span", `${event.chunks} chunks`, "count"));
 }
 
-// ---------- What the model is writing right now (GET /llm/live) ----------
-
-// LLM_LIVE[model] == {id, text, done, error}: the latest generation of each model, filled as the tokens arrive.
 const LLM_LIVE = {};
 
-// The cube a model works in: the instruct model in Part 2, the coder model in Part 3.
 function liveCubeOf(model) {
   return model === patchModel ? "p3-coder" : model === answerModel ? "p2-llm" : null;
 }
 
-// The model whose output a cube shows. The Ollama cube shows whichever model wrote last.
 function liveModelOf(id) {
   if (id === "p3-coder") return patchModel;
   if (id === "p2-llm") return answerModel;
@@ -1085,7 +1035,6 @@ function liveTitle(model, state) {
   return `Live output · ${model} · ${what} · ${state.text.length} chars`;
 }
 
-// The section at the top of the detail panel. Its <pre> is updated in place while the model writes.
 function liveSection(id) {
   const model = liveModelOf(id);
   const state = model && LLM_LIVE[model];
@@ -1103,13 +1052,13 @@ function refreshLiveSection(model) {
   if (!id || liveModelOf(id) !== model) return;
   const state = LLM_LIVE[model];
   const box = document.getElementById("sd-live");
-  if (!box) { // the panel was opened before this model started: put the section in at the top
+  if (!box) {
     const fresh = liveSection(id);
     const body = document.getElementById("sd-body");
     if (fresh && body.firstChild) body.firstChild.after(fresh);
     return;
   }
-  const follow = box.scrollTop + box.clientHeight >= box.scrollHeight - 24; // keep following unless the user scrolled up
+  const follow = box.scrollTop + box.clientHeight >= box.scrollHeight - 24;
   box.textContent = state.text || "(waiting for the first token…)";
   if (follow) box.scrollTop = box.scrollHeight;
   const section = document.getElementById("sd-live-sec");
@@ -1140,7 +1089,6 @@ function startLLMLive() {
   };
 }
 
-// Shows the Watcher's events as the server pushes them (GET /events), newest first.
 function startActivityFeed() {
   const list = document.getElementById("activity");
   const empty = document.getElementById("activity-empty");
@@ -1148,7 +1096,7 @@ function startActivityFeed() {
   let openedAt = Date.now() / 1000;
   source.onopen = () => {
     openedAt = Date.now() / 1000;
-    list.replaceChildren(); // the server replays all its events on every (re)connect
+    list.replaceChildren();
     SCENE.events = [];
     empty.hidden = false;
     setError("feed", "");
@@ -1158,7 +1106,7 @@ function startActivityFeed() {
     SCENE.events.unshift(event);
     SCENE.events.length = Math.min(SCENE.events.length, 40);
     list.prepend(eventItem(event));
-    if (event.time >= openedAt - 1) animateIndexing(event); // a live change, not the replay
+    if (event.time >= openedAt - 1) animateIndexing(event);
     empty.hidden = true;
     if (list.children.length > 200) list.lastElementChild.remove();
     if (!document.getElementById("tab-files").hidden && event.path === selectedPath) showFile(selectedPath);
@@ -1166,11 +1114,8 @@ function startActivityFeed() {
   source.onerror = () => setError("feed", "Live feed disconnected, reconnecting…");
 }
 
-// ---------- Files ----------
+let selectedPath = null;
 
-let selectedPath = null; // the file shown in the Files tab; kept when the user leaves and comes back
-
-// Lists the indexed files with their Chunk counts, then reopens the file that was selected before.
 async function loadFileList() {
   try {
     const files = await api("/files");
@@ -1190,7 +1135,6 @@ async function loadFileList() {
   }
 }
 
-// Shows one file line by line. A dashed boundary with the Chunk's name starts each Chunk, and ▶ marks its first line.
 async function showFile(path) {
   try {
     const file = await api("/file?path=" + encodeURIComponent(path));
@@ -1199,7 +1143,7 @@ async function showFile(path) {
       button.classList.toggle("active", button.dataset.path === path);
     }
     const lines = file.content.split("\n");
-    if (lines[lines.length - 1] === "") lines.pop(); // the last newline does not start another line
+    if (lines[lines.length - 1] === "") lines.pop();
     document.getElementById("file-path").textContent = file.path;
     document.getElementById("file-meta").replaceChildren(
       badge(`${lines.length} lines`), badge(`${new Blob([file.content]).size} bytes`), badge(`${file.chunks.length} chunks`, "accent"));
@@ -1235,7 +1179,6 @@ async function showFile(path) {
   }
 }
 
-// Marks the lines of one Chunk. Line numbers start at 1 and the range includes both ends.
 function highlightChunk(chunk) {
   const lines = document.querySelectorAll("#file-content .line");
   lines.forEach((line, index) => {
@@ -1245,15 +1188,12 @@ function highlightChunk(chunk) {
   lines[chunk.start_line - 1]?.scrollIntoView({block: "center", behavior: "smooth"});
 }
 
-// ---------- ChromaDB Explorer ----------
-
-let chunkOffset = 0; // how many Chunks the current page skips
+let chunkOffset = 0;
 
 function chunkLimit() {
   return Number(document.getElementById("chunk-limit").value);
 }
 
-// The first line of a text, cut to 80 characters, followed by "…" when something was left out.
 function firstLine(text) {
   const line = text.split("\n")[0].slice(0, 80);
   return line === text ? line : line + " …";
@@ -1261,10 +1201,9 @@ function firstLine(text) {
 
 const KIND_TONE = {class: "accent", method: "ok", function: "ok", async_function: "ok", module: "", yaml_key: "warn", heading: "warn"};
 
-// One table row for a Chunk. The full text sits in a <details> box that opens on click.
 function chunkRow(chunk) {
   const id = el("td", chunk.id.slice(0, 8));
-  id.title = chunk.id; // the full id appears as a tooltip
+  id.title = chunk.id;
   const details = make("details", "", el("summary", firstLine(chunk.text)), el("pre", chunk.text));
   const tr = make("tr", "", id, el("td", chunk.path), el("td", `${chunk.start_line}–${chunk.end_line}`), el("td", chunk.name),
                   make("td", "", badge(chunk.kind, KIND_TONE[chunk.kind] ?? "")), make("td", "", details));
@@ -1272,7 +1211,6 @@ function chunkRow(chunk) {
   return tr;
 }
 
-// Hides the rows of the current page that do not match the filter box.
 function filterChunks() {
   const words = document.getElementById("chunk-filter").value.trim().toLowerCase();
   for (const tr of document.querySelectorAll("#chunk-table tbody tr")) {
@@ -1280,12 +1218,11 @@ function filterChunks() {
   }
 }
 
-// Shows the page of Chunks that starts at chunkOffset (GET /chunks).
 async function loadChunks() {
   const limit = chunkLimit();
   try {
     const page = await api(`/chunks?offset=${chunkOffset}&limit=${limit}`);
-    if (page.items.length === 0 && chunkOffset > 0) { // the Index shrank: start again from the first page
+    if (page.items.length === 0 && chunkOffset > 0) {
       chunkOffset = 0;
       return loadChunks();
     }
@@ -1304,15 +1241,11 @@ async function loadChunks() {
   }
 }
 
-// ---------- Ask & Retrieve ----------
-
-// "sim 0.612 · rrf 0.0325", or "" for a Chunk that has no scores.
 function formatScores(chunk) {
   if (typeof chunk.similarity !== "number" || typeof chunk.score !== "number") return "";
   return `sim ${chunk.similarity.toFixed(3)} · rrf ${chunk.score.toFixed(4)}`;
 }
 
-// Fills the container with one card per Chunk: rank, location, name, kind, scores (if any); the text opens on click.
 function renderSources(container, chunks) {
   container.replaceChildren();
   document.getElementById("results-title").hidden = false;
@@ -1327,7 +1260,7 @@ function renderSources(container, chunks) {
     if (text) scores.append(meter(chunk.similarity), el("span", text));
     const head = make("div", "source-head", el("span", `#${index + 1}`, "rank"), title, scores);
     const code = el("pre", chunk.text);
-    code.hidden = index > 1; // the two best are open; the rest open on click
+    code.hidden = index > 1;
     head.onclick = () => { code.hidden = !code.hidden; };
     container.append(make("div", "panel source", head, code));
   });
@@ -1337,7 +1270,6 @@ function askK() {
   return Number(document.getElementById("ask-k").value);
 }
 
-// While a request runs, both buttons are disabled so nobody sends it twice.
 function setAskBusy(busy) {
   for (const button of document.querySelectorAll("#tab-ask .composer button")) button.disabled = busy;
 }
@@ -1348,7 +1280,6 @@ function clearAskResults() {
   document.getElementById("results").replaceChildren();
 }
 
-// Retrieve button: show the Chunks that POST /context finds for the text.
 async function retrieve() {
   const query = document.getElementById("query").value.trim();
   if (query === "") {
@@ -1384,7 +1315,6 @@ async function retrieve() {
   }
 }
 
-// Ask button: send the text as a Question to POST /ask; show the answer, how it was made, and its sources.
 async function ask() {
   const question = document.getElementById("query").value.trim();
   if (question === "") {
@@ -1436,36 +1366,29 @@ async function ask() {
     setNode("p2", "llm", "fail", e.message.startsWith("503") ? "unreachable" : "error");
     if (e.message.startsWith("503")) cube3d("ollama", "fail", "unreachable");
     setLaneStatus("p2", "failed", "fail");
-    showMessage("ask-message", "Request failed: " + e.message, true); // a 503 says that Ollama is not reachable
+    showMessage("ask-message", "Request failed: " + e.message, true);
   } finally {
     setAskBusy(false);
   }
 }
 
-// ---------- Patch Loop ----------
-
-// POST /patch only exists when p3.app is running. The server's list of routes (GET /openapi.json) tells us,
-// so we never send a POST just to find out. Shows the form if the route exists, a "not available" note if not.
 async function checkPatchAvailable() {
   let available = false;
   try {
     const spec = await api("/openapi.json");
     available = "/patch" in spec.paths;
-  } catch (e) {} // server down or no list of routes: treat the Patch Loop as not available
+  } catch (e) {}
   document.getElementById("patch-unavailable").hidden = available;
   document.getElementById("patch-form").hidden = !available;
 }
 
-// The four steps of an Attempt: the key in the reply and the label shown.
 const PATCH_STEPS = [["generation", "Generate"], ["sanity", "Sanity check"], ["apply", "Apply"], ["validation", "Validate"]];
 
-// The detail text of one step. A step has at most one of: files written, summary, error, reason.
 function stepDetail(step) {
   if (step.files) return step.files.join(", ");
   return step.summary || step.error || step.reason || (step.ok ? "passed" : "");
 }
 
-// One node of the pipeline: a bullet (✓, ✗ or its number when skipped), a line to the next step, label and detail.
 function stepNode(label, step, number) {
   const state = !step ? "skipped" : step.ok ? "ok" : "fail";
   const bullet = el("span", state === "ok" ? "✓" : state === "fail" ? "✕" : String(number), "bullet");
@@ -1473,7 +1396,6 @@ function stepNode(label, step, number) {
               el("div", label, "step-label"), el("div", step ? stepDetail(step) : "skipped", "step-detail"));
 }
 
-// A card for one Attempt: its title, the pipeline of its four steps, and the validation log if there is one.
 function attemptCard(attempt) {
   const head = make("div", "attempt-head", el("strong", `Attempt ${attempt.number}`),
                     badge(attempt.ok ? "passed" : "failed — rolled back", attempt.ok ? "ok" : "fail"));
@@ -1488,7 +1410,6 @@ function attemptCard(attempt) {
 
 const OP_TONE = {create: "ok", modify: "accent", delete: "fail"};
 
-// Shows the reply of POST /patch: a banner, every Attempt, and the final Patch file by file plus the raw JSON.
 function renderPatchResult(container, data, seconds) {
   container.replaceChildren();
   const success = data.status === "success";
@@ -1509,7 +1430,6 @@ function renderPatchResult(container, data, seconds) {
   container.append(panel);
 }
 
-// Colours the Part 3 lane with the last Attempt: which step passed, which failed, and how it ended.
 function showPatchOnMap(data) {
   const last = data.attempts[data.attempts.length - 1] || {};
   const state = (step) => !step ? "skipped" : step.ok ? "ok" : "fail";
@@ -1525,7 +1445,6 @@ function showPatchOnMap(data) {
   if (success) setTimeout(() => { flow3d(["p3-outcome", "p1-watcher", "p1-chroma"]); dinoJump(); }, ms);
 }
 
-// Run button: send the Intent to POST /patch and wait. The loop can take minutes on CPU, so a timer shows it is alive.
 async function runPatchLoop() {
   const intent = document.getElementById("intent").value.trim();
   if (intent === "") {
@@ -1568,25 +1487,21 @@ async function runPatchLoop() {
     setNode("p3", "retriever", "ok");
     setNode("p3", "coder", "fail", e.message.startsWith("503") ? "unreachable" : "error");
     setLaneStatus("p3", "failed", "fail");
-    showMessage("patch-message", "Request failed: " + e.message, true); // a 503 says that Ollama is not reachable
+    showMessage("patch-message", "Request failed: " + e.message, true);
   } finally {
     button.disabled = false;
   }
 }
 
-// ---------- 3D View ----------
-// A plain CSS 3D scene (no library, works offline). Each part is a level, each step of it a cube; the cubes take the
-// same states as the System map (setNode calls cube3d), and small packets fly along the wires to show what moves.
-
 const PART_COLORS = {p1: "#38bdf8", p2: "#a78bfa", p3: "#f5b84a", ollama: "#f472b6"};
 const SCENE = {
-  levels: {p1: 0, p2: 190, p3: 380},          // height of each level
-  cols: {p2: -460, p1: 0, p3: 460},           // and its place across: Part 2 left of Part 1, Part 3 right, so none hides another from above
-  sizes: {p1: [74, 50], p2: [74, 50], p3: [62, 46]}, // [side, height] of the cubes
-  spans: {p1: 800, p2: 800, p3: 840},          // distance from the first to the last cube
+  levels: {p1: 0, p2: 190, p3: 380},
+  cols: {p2: -460, p1: 0, p3: 460},
+  sizes: {p1: [74, 50], p2: [74, 50], p3: [62, 46]},
+  spans: {p1: 800, p2: 800, p3: 840},
   home: {rx: 54, rz: -18, zoom: 0.47, x: 40, y: -20, z: 190},
   cam: null, cubes: {}, orbit: true, dragging: false, step: -1, run: 0, speed: 1, selected: null,
-  data: {p2: null, p3: null}, events: [], branch: null, // what the last real request returned, for the detail panel
+  data: {p2: null, p3: null}, events: [], branch: null,
 };
 SCENE.cam = {...SCENE.home};
 
@@ -1597,7 +1512,6 @@ const GLYPHS = {
   "p3-outcome": "↺", "ollama": "◆", "p2-r-has": "∃", "p2-r-file": "≡", "p2-r-llm": "✦",
 };
 
-// Cube id -> [the file that does it, what it does]. Shown when a cube is clicked.
 const EXPLAIN = {
   "p1-codebase": ["target/  →  /workspace", "The Target Project: the calculator the system reads, answers about and patches. Mounted into the container."],
   "p1-chunker": ["p1/services/chunker.py", "Splits every file into Chunks: Python by ast (one per function, class and method), other text by lines. Each Chunk keeps its path, lines, name and kind."],
@@ -1622,7 +1536,6 @@ const EXPLAIN = {
   "p2-r-llm": ["p2/services/ask.py · ask", "Every other question: hybrid search for the top-k Chunks, then the instruct model answers from them."],
 };
 
-// The guided tour for a demo: what to look at, from where, and what moves.
 const TOUR = [
   {title: "Inception-of-Context", focus: [], cam: {},
    text: "Three parts stacked like levels. Part 1 builds the Index, Part 2 reads it to answer questions, Part 3 uses both to change the code and proves the change with tests. Two containers, no internet."},
@@ -1650,8 +1563,6 @@ const TOUR = [
    text: "Edit a file in target/, ask on the Ask tab or run the Patch Loop: these cubes follow the real system. The Replay buttons show each flow without waiting for the model."},
 ];
 
-// A replay is a script: ["on" | "ok" | "fail" | "skip", id, stat] sets a cube, ["go", ...ids] flies a packet and waits,
-// ["wait", ms], ["reset", ...lanes], ["info", title, text]. It only moves the 3D cubes; the System map stays true.
 function patchAttempt(number, green) {
   return [
     ["on", "p3-coder", `attempt ${number}`], ["go", "p3-coder", "ollama"], ["on", "ollama", "generating"], ["wait", 700],
@@ -1705,8 +1616,6 @@ const REPLAYS = {
   ],
 };
 
-// The full run: every replay one after another, the camera flying to each part first (the tour's framings).
-// ["view", n] frames tour step n and waits for the camera.
 REPLAYS.full = [
   ["info", "Full run · Inception-of-Context", TOUR[0].text], ["reset", "p1"], ["reset", "p2"], ["reset", "p3"],
   ["view", 0], ["wait", 1200],
@@ -1723,7 +1632,6 @@ function clamp(value, low, high) {
   return Math.min(high, Math.max(low, value));
 }
 
-// The 5 visible faces of a w × d × h box whose corner is at the origin (the bottom is never seen).
 function boxFaces(w, d, h) {
   return [["top", w, d, `translateZ(${h}px)`], ["y", w, h, "rotateX(90deg)"], ["y", w, h, `translateY(${d}px) rotateX(90deg)`],
           ["x", h, d, "rotateY(-90deg)"], ["x", h, d, `translateX(${w}px) rotateY(-90deg)`]].map(([side, width, height, transform]) => {
@@ -1733,7 +1641,6 @@ function boxFaces(w, d, h) {
   });
 }
 
-// A flat card at (x, y, z), turned back by the camera's rotation so that it always faces the viewer.
 function billboard(className, x, y, z, ...children) {
   const card = make("div", "billboard " + className, make("div", "card3d", ...children));
   card.style.transform = `translate3d(${x}px, ${y}px, ${z}px) rotateZ(calc(var(--rz) * -1)) rotateX(calc(var(--rx) * -1))`;
@@ -1753,7 +1660,6 @@ function addCube(world, id, color, x, y, z, side, height, title, sub) {
   return cube;
 }
 
-// The dino, row by row from the top: # skin, b belly, e eye, s back spike, . nothing. It faces +x, like the flow.
 const DINO = [
   "........####.",
   ".......######",
@@ -1774,7 +1680,7 @@ function addDino(world) {
   const dino = make("div", "dino");
   DINO.forEach((row, index) => {
     const z = (DINO.length - 1 - index) * voxel;
-    for (const run of row.matchAll(/#+|b+|e+|s+/g)) { // one box per run of the same colour, so few elements
+    for (const run of row.matchAll(/#+|b+|e+|s+/g)) {
       const kind = {"#": "skin", b: "belly", e: "eye", s: "spike"}[run[0][0]];
       const box = make("div", "voxel " + kind, ...boxFaces(run[0].length * voxel, depth, voxel));
       box.style.transform = `translate3d(${run.index * voxel}px, 0px, ${z}px)`;
@@ -1782,7 +1688,7 @@ function addDino(world) {
     }
   });
   const holder = make("div", "dino-pos", dino);
-  holder.style.transform = "translate3d(150px, 520px, 0px)"; // on the floor, in front of Part 1
+  holder.style.transform = "translate3d(150px, 520px, 0px)";
   world.append(holder);
 }
 
@@ -1790,11 +1696,10 @@ function dinoJump() {
   const dino = document.querySelector(".dino");
   if (!dino) return;
   dino.classList.remove("jump");
-  void dino.offsetWidth; // restart the animation
+  void dino.offsetWidth;
   dino.classList.add("jump");
 }
 
-// A point on a cube: its centre, lifted from mid height.
 function anchor(id, lift = 0) {
   const cube = SCENE.cubes[id];
   return {x: cube.x, y: cube.y, z: cube.z + cube.h / 2 + lift};
@@ -1821,7 +1726,7 @@ function buildScene() {
   world.replaceChildren();
   SCENE.cubes = {};
   for (const [lane, z] of Object.entries(SCENE.levels)) {
-    const x0 = SCENE.cols[lane]; // each lane runs from the back (first step) to the front (last step)
+    const x0 = SCENE.cols[lane];
     const plate = el("div", "", "plate");
     plate.style.setProperty("--base", PART_COLORS[lane]);
     Object.assign(plate.style, {width: "230px", height: "1160px", transform: `translate3d(${x0 - 115}px, -600px, ${z}px)`});
@@ -1839,13 +1744,11 @@ function buildScene() {
       if (index > 0) addBeam(world, `${lane}-${nodes[index - 1][0]}`, `${lane}-${key}`, "lane", PART_COLORS[lane]);
     });
   }
-  // The Router's three branches, in front of it: two answered from the Index, one for the model.
   const router = SCENE.cubes["p2-router"];
   ROUTER_BRANCHES.forEach(([key, name], index) => {
     addCube(world, `p2-r-${key}`, PART_COLORS.p2, router.x + 78, router.y + (index - 1) * 60, router.z, 32, 20, name, "").classList.add("mini");
     addBeam(world, "p2-router", `p2-r-${key}`, "lane", PART_COLORS.p2);
   });
-  // Ollama stands on its own pad on the ground floor, behind Part 1.
   const pad = el("div", "", "plate");
   pad.style.setProperty("--base", PART_COLORS.ollama);
   Object.assign(pad.style, {width: "180px", height: "180px", transform: "translate3d(-90px, -870px, 0px)"});
@@ -1866,7 +1769,6 @@ function buildScene() {
   renderCamera();
 }
 
-// Sets one cube's state ("", "active", "ok", "fail", "skipped") and the small line under its name.
 function cube3d(id, state, stat) {
   const cube = SCENE.cubes[id];
   if (!cube) return;
@@ -1874,7 +1776,6 @@ function cube3d(id, state, stat) {
   if (stat !== undefined) cube.stat.textContent = stat;
 }
 
-// Gives every cube the state of its node on the System map, which always shows the real system.
 function syncCubesFromMap() {
   for (const node of document.querySelectorAll("#system-map .node")) {
     const state = ["active", "ok", "fail", "skipped"].find((name) => node.classList.contains(name)) || "";
@@ -1882,7 +1783,6 @@ function syncCubesFromMap() {
   }
 }
 
-// A small glowing cube that flies through the given cubes, one wire at a time.
 function flow3d(ids, ms = 480) {
   const world = document.getElementById("world");
   if (ids.length < 2 || ids.some((id) => !SCENE.cubes[id])) return 0;
@@ -1899,8 +1799,6 @@ function flow3d(ids, ms = 480) {
   return duration;
 }
 
-// ---- camera ----
-
 function renderCamera() {
   const {rx, rz, zoom, x, y, z} = SCENE.cam;
   const world = document.getElementById("world");
@@ -1913,7 +1811,7 @@ let cameraTween = null;
 function moveCamera(target, ms = 1200) {
   const to = {...SCENE.home, ...target};
   const from = {...SCENE.cam};
-  from.rz = to.rz + ((((from.rz - to.rz) % 360) + 540) % 360 - 180); // take the short way round
+  from.rz = to.rz + ((((from.rz - to.rz) % 360) + 540) % 360 - 180);
   const start = performance.now();
   cameraTween = (now) => {
     const t = Math.min(1, (now - start) / ms);
@@ -1932,11 +1830,10 @@ function sceneFrame(now) {
   requestAnimationFrame(sceneFrame);
 }
 
-// The info card at the bottom left. Hidden or not is remembered in this browser.
 function setInfoVisible(on) {
   document.getElementById("scene-wrap").classList.toggle("info-hidden", !on);
   document.getElementById("scene-info-toggle").classList.toggle("on", on);
-  try { localStorage.setItem("ioc-scene-info", on ? "shown" : "hidden"); } catch (e) { /* private mode: not remembered */ }
+  try { localStorage.setItem("ioc-scene-info", on ? "shown" : "hidden"); } catch (e) {  }
 }
 
 function infoVisible() {
@@ -1947,8 +1844,6 @@ function setOrbit(on) {
   SCENE.orbit = on;
   document.getElementById("scene-orbit").classList.toggle("on", on);
 }
-
-// ---- the info card, the focus, the tour ----
 
 function partName(id) {
   return id === "ollama" ? "Container · models" : `Part ${id[1]} · ${LANES[id.slice(0, 2)].title}`;
@@ -1975,14 +1870,13 @@ function selectCube(id, fly = true) {
   const [file, text] = EXPLAIN[id];
   showInfo(partName(id), SCENE.cubes[id].title, text, file);
   const cube = SCENE.cubes[id];
-  if (fly) { // a click flies in; a Live result keeps the camera where the user left it
+  if (fly) {
     setOrbit(false);
-    moveCamera({x: cube.x + 90, y: cube.y, z: cube.z, zoom: 1.05, rx: 54, rz: SCENE.cam.rz}, 900); // the panel covers the right
+    moveCamera({x: cube.x + 90, y: cube.y, z: cube.z, zoom: 1.05, rx: 54, rz: SCENE.cam.rz}, 900);
   }
   openDetail(id);
 }
 
-// Flies the camera to tour step n's framing and highlights its cubes.
 function frameTourStep(step) {
   setOrbit(false);
   const mean = (key) => step.focus.reduce((sum, id) => sum + SCENE.cubes[id][key], 0) / step.focus.length;
@@ -1991,7 +1885,7 @@ function frameTourStep(step) {
 }
 
 function tourGo(index) {
-  SCENE.run++; // stops a replay or the full run
+  SCENE.run++;
   SCENE.step = clamp(index, 0, TOUR.length - 1);
   const step = TOUR[SCENE.step];
   closeDetail();
@@ -2004,7 +1898,7 @@ function tourGo(index) {
 }
 
 function resetScene() {
-  SCENE.run++; // stops a replay or the full run
+  SCENE.run++;
   closeDetail();
   SCENE.step = -1;
   document.getElementById("tour-count").textContent = "–";
@@ -2021,7 +1915,7 @@ async function replay(name) {
   setFocus([]);
   closeDetail();
   for (const [action, ...args] of REPLAYS[name]) {
-    if (run !== SCENE.run) return; // another replay started
+    if (run !== SCENE.run) return;
     if (action === "info") showInfo("Replay", args[0], args[1]);
     else if (action === "reset") for (const [key] of LANES[args[0]].nodes) cube3d(`${args[0]}-${key}`, "", "");
     else if (action === "reset3") for (const id of args) cube3d(id, "", "");
@@ -2039,9 +1933,6 @@ async function replay(name) {
   }
 }
 
-// ---- the Router's three branches ----
-
-// [key, label, what it means]. The order is the order the Router tries them (p2/services/router.py).
 const ROUTER_BRANCHES = [
   ["has", "has_function", "\"is there a function X?\" — looked up in the Index metadata, no model."],
   ["file", "file_functions", "\"what functions are in core.py?\" — listed from the Index metadata, no model."],
@@ -2049,15 +1940,13 @@ const ROUTER_BRANCHES = [
 ];
 const BRANCH_KEY = {has_function: "has", file_functions: "file", llm: "llm"};
 
-// Which branch answered: the reply has no route field, but the two Index answers have fixed wording (p2/services/ask.py).
 function routerBranch(data) {
   if (data.used_llm) return "llm";
   if (/^(Yes\. "|No\. There is no function or method named)/.test(data.answer)) return "has_function";
   if (/ defines \d+ functions?: |^I found no functions in a file named/.test(data.answer)) return "file_functions";
-  return "llm"; // "The Index is empty": it took the model's branch but had nothing to send
+  return "llm";
 }
 
-// branch: null clears the three cubes, "none" greys them (POST /context skips the Router), else lights the chosen one.
 function setRouterBranch(branch) {
   SCENE.branch = branch;
   for (const [key, label] of ROUTER_BRANCHES) {
@@ -2067,8 +1956,6 @@ function setRouterBranch(branch) {
     SCENE.cubes[id]?.cube.classList.toggle("chosen", Boolean(chosen));
   }
 }
-
-// ---- live mode: a real request from inside the 3D View ----
 
 const LIVE_HINTS = {
   ask: "a real question, e.g. what happens on division by zero?",
@@ -2082,10 +1969,9 @@ async function runLive() {
   if (!text) return showInfo("Live", "Type something first", LIVE_HINTS[mode]);
   const button = document.getElementById("scene-live-go");
   button.disabled = true;
-  SCENE.run++; // stops a replay that is still playing
+  SCENE.run++;
   closeDetail();
   setFocus([]);
-  // The camera stays where the user left it: a Live run lights the cubes up, it does not fly to them.
   showInfo("Live", mode === "patch" ? "Running the Patch Loop…" : "Asking the real system…",
            mode === "patch" ? "The coder model and the tests take a few minutes on CPU. Click any cube afterwards to see what it did."
                             : "Click any cube when it is done to see what went through it.");
@@ -2104,8 +1990,6 @@ async function runLive() {
   if (failed) return showInfo("Live", "Request failed", failed);
   selectCube(mode === "patch" ? "p3-outcome" : "p2-answer", false);
 }
-
-// ---- inside a cube: the detail panel ----
 
 function closeDetail() {
   SCENE.selected = null;
@@ -2130,8 +2014,6 @@ function chunkList(chunks) {
   return chunks.length ? make("ul", "", ...chunks.map((chunk) => make("li", "", chunkLine(chunk)))) : para("No Chunks.");
 }
 
-// The prompt the instruct model got, rebuilt from the reply the way p2/services/ask.py builds it.
-// KNOWN SYMBOLS is made on the server from every symbol of these files, so only the files are named here.
 const ANSWER_RULES_COPY = `You answer questions about a small Python project, using ONLY the code below.
 Rules:
 - Use only the code shown. If the answer is not in the code, say you don't know.
@@ -2268,7 +2150,7 @@ async function openDetail(id) {
   document.getElementById("scene-detail").hidden = false;
   document.getElementById("scene-wrap").classList.add("detail-open");
   const parts = await DETAIL[id]();
-  const live = liveSection(id); // the model's own words, streamed, above what the request returned
+  const live = liveSection(id);
   if (SCENE.selected === id) body.replaceChildren(para(EXPLAIN[id][1], "muted"), ...(live ? [live] : []), ...parts);
 }
 
@@ -2317,7 +2199,7 @@ function connectScene() {
   wrap.addEventListener("pointerup", () => release(true));
   wrap.addEventListener("pointercancel", () => release(false));
   wrap.addEventListener("wheel", (e) => {
-    if (e.target.closest(".scene-detail")) return; // scroll the panel, not the camera
+    if (e.target.closest(".scene-detail")) return;
     e.preventDefault();
     cameraTween = null;
     SCENE.cam.zoom = clamp(SCENE.cam.zoom * Math.exp(-e.deltaY * 0.0012), 0.3, 2.4);
@@ -2330,7 +2212,7 @@ function connectScene() {
   document.getElementById("scene-info-toggle").onclick = () => setInfoVisible(!infoVisible());
   document.getElementById("si-close").onclick = () => setInfoVisible(false);
   let savedInfo = null;
-  try { savedInfo = localStorage.getItem("ioc-scene-info"); } catch (e) { /* not available */ }
+  try { savedInfo = localStorage.getItem("ioc-scene-info"); } catch (e) {  }
   setInfoVisible(savedInfo !== "hidden");
   document.getElementById("scene-reset").onclick = resetScene;
   document.getElementById("scene-full").onclick = toggleFullscreen;
@@ -2343,8 +2225,6 @@ function connectScene() {
   };
 }
 
-// The animation speed: every wait, packet and camera move of a replay or the full run reads it, so a change
-// applies at once, even in the middle of a run. + and - step through the menu's values.
 function setSpeed(speed) {
   SCENE.speed = speed;
   document.getElementById("scene-speed").value = String(speed);
@@ -2355,8 +2235,6 @@ function stepSpeed(direction) {
   setSpeed(values[clamp(values.indexOf(SCENE.speed) + direction, 0, values.length - 1)]);
 }
 
-// Keys on the 3D View: ← → walk the tour, F fullscreen, R reset, I info card, Space starts or stops the orbit,
-// P the full run, + - the speed.
 function sceneKey(e) {
   if (document.getElementById("tab-scene").hidden) return false;
   if (e.key === "ArrowRight") tourGo(SCENE.step + 1);
@@ -2373,9 +2251,6 @@ function sceneKey(e) {
   return true;
 }
 
-// ---------- Start ----------
-
-// Connect the buttons.
 for (const button of document.querySelectorAll("nav button")) {
   button.onclick = () => showTab(button.dataset.tab);
 }
@@ -2396,7 +2271,6 @@ document.getElementById("retrieve-button").onclick = retrieve;
 document.getElementById("ask-button").onclick = ask;
 document.getElementById("patch-run").onclick = runPatchLoop;
 
-// A suggestion fills its text box; Ctrl/⌘ + Enter in a text box runs its main action.
 for (const [boxId, listId] of [["query", "ask-suggestions"], ["intent", "patch-suggestions"]]) {
   for (const suggestion of document.querySelectorAll(`#${listId} .suggestion`)) {
     suggestion.onclick = () => {
@@ -2409,7 +2283,6 @@ for (const [boxId, listId] of [["query", "ask-suggestions"], ["intent", "patch-s
 document.getElementById("query").onkeydown = (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask(); };
 document.getElementById("intent").onkeydown = (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runPatchLoop(); };
 
-// Keys 1 to 6 switch tabs, unless the user is typing.
 document.addEventListener("keydown", (e) => {
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
   if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && sceneKey(e)) return;
@@ -2417,7 +2290,6 @@ document.addEventListener("keydown", (e) => {
   if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && TABS[index]) showTab(TABS[index]);
 });
 
-// Start the parts that run by themselves.
 drawSystemMap();
 buildScene();
 showDefaultInfo();
@@ -2430,7 +2302,6 @@ startActivityFeed();
 startLLMLive();
 checkPatchAvailable();
 
-// Open the tab named in the URL (#files), or Overview.
 const firstTab = location.hash.slice(1);
 showTab(TABS.includes(firstTab) ? firstTab : "overview");
 </script>

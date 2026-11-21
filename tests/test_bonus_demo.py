@@ -30,7 +30,7 @@ def test_the_demo_mounts_the_host_target_and_runs_the_job_list(monkeypatch):
     assert run[:4] == ["run", "-d", "--name", "calculator"]
     assert "/home/me/ioc/target:/workspace:ro" in run
     assert "/var/run/docker.sock" not in " ".join(run)
-    assert "getattr(calculator, name)" in run[-1]  # bonus/demo/calculator_job.py, passed as python -c
+    assert "getattr(calculator, name)" in run[-1]
 
 
 def test_outside_a_container_the_demo_says_to_use_make_crash(monkeypatch):
@@ -68,9 +68,6 @@ def test_the_demo_route(monkeypatch):
     assert TestClient(app).post("/bonus/docker/demo").json()["ok"] is True
 
 
-# --- Reset demo: target/ as it was before the first run ---
-
-
 def test_reset_undoes_the_fix_and_removes_new_files(temp_index, monkeypatch):
     import os
     core = os.path.join(temp_index, "calculator", "core.py")
@@ -78,9 +75,9 @@ def test_reset_undoes_the_fix_and_removes_new_files(temp_index, monkeypatch):
     with open(core, "w") as handle:
         handle.write("class Calculator:\n    pass\n")
     monkeypatch.setattr(docker_demo_service, "saved", None)
-    assert docker_demo_service.reset()["ok"] is False  # never started
+    assert docker_demo_service.reset()["ok"] is False
     docker_demo_service.save_target()
-    docker_demo_service.save_target()  # a second run keeps the first copy
+    docker_demo_service.save_target()
     with open(core, "w") as handle:
         handle.write("class Calculator:\n    def power(self, a, b):\n        return a ** b\n")
     with open(os.path.join(temp_index, "calculator", "test_power.py"), "w") as handle:
@@ -98,9 +95,6 @@ def test_the_reset_route(monkeypatch):
     monkeypatch.setattr(docker_demo_service, "reset",
                         lambda: {"ok": True, "restored": [], "removed": [], "error": None})
     assert TestClient(app).post("/bonus/docker/demo/reset").json()["ok"] is True
-
-
-# --- after a green fix, the watch runs the container again ---
 
 
 class Rerun:
@@ -159,9 +153,6 @@ def test_only_a_green_fix_is_verified(monkeypatch):
         monkeypatch.setattr(docker_watch_service.patch_bonus, "run", lambda *a, status=status, **k: {"status": status})
         docker_watch_service.patch_after_crash("calculator", "fix", ["Traceback", "AttributeError: x"])
     assert verified == ["calculator"]
-
-
-# --- make up (no socket) is reported in words the user can act on ---
 
 
 def test_no_socket_in_the_container_says_make_up_watch(monkeypatch):

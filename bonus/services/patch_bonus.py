@@ -14,8 +14,6 @@ from bonus.services.pull_request import pull_request_service
 class PatchBonusService:
     def __init__(self, settings, llm_client, file_repository, patch_loop_service, sanity_service,
                  attempt_factory, diff_service, git_commit_service, events, pull_request_service):
-        # debug: dry_run calls qwen2.5-coder:3b once. A real run calls patch_loop_service.run_attempt.
-        # events is bonus_event_repository. The dashboard reads those events from GET /bonus/events.
         self.settings = settings
         self.llm_client = llm_client
         self.file_repository = file_repository
@@ -29,16 +27,11 @@ class PatchBonusService:
 
     def read(self, path):
         """The current text of one Target Project file, or "" when it does not exist."""
-        # debug: path == "calculator/core.py" -> return is the 21-line class, starting "class Calculator:"
-        # path == "tests/test_power.py" before it is created -> return == ""
         text = self.file_repository.read_text(self.file_repository.full_path(path))
         return text if text is not None else ""
 
     def diffs_for(self, patch):
         """A unified diff per file in the Patch, against the text on disk right now."""
-        # debug: used by dry_run, before any write. patch modifies calculator/core.py.
-        # diffs[0] == {"path": "calculator/core.py", "op": "modify", "diff": "--- a/calculator/core.py\n..."}
-        # op "delete" diffs against the current text and an empty new text.
         diffs = []
         for entry in patch["files"]:
             new = "" if entry["op"] == "delete" else entry.get("content") or ""
@@ -48,8 +41,6 @@ class PatchBonusService:
 
     def snapshot(self):
         """Text of every indexed file, taken before a real Patch Loop overwrites them."""
-        # debug: saved["calculator/core.py"] is the class text from before apply_patch.
-        # a missing file is absent from saved, so a later create diffs against "".
         saved = {}
         for full in self.file_repository.list_files(self.settings.TARGET_DIR):
             rel = self.file_repository.relative_path(full)
@@ -60,9 +51,6 @@ class PatchBonusService:
 
     def diffs_from_snapshot(self, saved, patch):
         """Diffs of the files the Patch touched, using the snapshot taken before it was applied."""
-        # debug: apply_patch has already replaced calculator/core.py, so the old text comes from saved.
-        # saved["calculator/core.py"] is the 21-line class. new is patch content, the class plus power.
-        # return[0]["diff"] starts with "--- a/calculator/core.py\n+++ b/calculator/core.py\n"
         diffs = []
         for entry in patch["files"]:
             new = "" if entry["op"] == "delete" else entry.get("content") or ""
@@ -72,18 +60,11 @@ class PatchBonusService:
         return diffs
 
     def reply(self, status, attempts, patch, diffs, git, dry_run):
-        # debug: a green real run returns
-        # {"status": "success", "attempts": [attempt], "patch": {...}, "diffs": [...],
-        #  "git": {"ok": True, "message": "Add a power method to Calculator", "error": None},
-        #  "dry_run": False}
         return {"status": status, "attempts": attempts, "patch": patch,
                 "diffs": diffs, "git": git, "dry_run": dry_run}
 
     def note_attempt(self, attempt):
         """Tell the live feed how this Attempt ended, including the validation result."""
-        # debug: pytest of the calculator failed. events.add("attempt", {
-        #   "number": 1, "ok": False, "validation_ok": False, "error": "validation failed:\n..."})
-        # a sanity refusal has no validation key, so validation_ok is None
         validation = attempt.get("validation") or {}
         self.events.add("attempt", {
             "number": attempt["number"],
@@ -94,11 +75,6 @@ class PatchBonusService:
 
     def dry_run(self, intent, k):
         """Generate one Patch and its diff. Sanity still runs. The disk is not touched."""
-        # debug: intent == "add a power function to Calculator", k == 5. One call to qwen2.5-coder:3b.
-        # valid patch that passes sanity:
-        #   return status == "dry_run", diffs filled, git is None, dry_run is True. Disk unchanged.
-        # "not json": status == "refused", patch is None, diffs == []
-        # sanity refuses 4 files: status == "refused", patch and diffs are still returned
         self.events.add("attempt_started", {"number": 1, "step": "dry_run"})
         text = self.llm_client.call_llm(
             self.settings.PATCH_MODEL, self.patch_loop_service.build_patch_prompt(intent, k, None), json_mode=True)
@@ -125,16 +101,6 @@ class PatchBonusService:
 
     def run(self, intent, k=5, max_attempts=3, dry_run=False, git_commit=True, pull_request=False):
         """Dry-run, or the real loop. A green Patch can be committed. Events go out as each Attempt ends."""
-        # pull_request True: the same loop, but a green Patch is rolled back and opened as a pull request.
-        #   status == "open", return["pull"]["number"] == 1, the disk is unchanged, git stays None.
-        #   POST /bonus/pulls/1/merge then applies exactly that Patch.
-        # debug: POST /bonus/patch {"intent": "add a power function to Calculator", "k": 5,
-        #   "max_attempts": 3, "dry_run": false, "git_commit": true}
-        # the same non-reentrant patch_lock is held here, so this method calls run_attempt, not run_patch_loop
-        # dry_run True: return is dry_run(), status "dry_run" or "refused", nothing written
-        # pytest green: status == "success", diffs come from the snapshot, git is the commit result
-        # three failures: status == "failed", patch is None, diffs == [], git stays None
-        # max_attempts 0 or 99 is clamped to 1..3
         with self.patch_loop_service.patch_lock:
             self.events.add("started", {"intent": intent, "dry_run": dry_run, "pull_request": pull_request})
             if dry_run:

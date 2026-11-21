@@ -58,8 +58,8 @@ class FakeOllama:
 
     def __init__(self):
         self.replies = collections.defaultdict(collections.deque)
-        self.prompts = []  # (model, prompt, json_mode)
-        self.status = 200  # set to 500 to play a broken Ollama
+        self.prompts = []
+        self.status = 200
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -126,8 +126,6 @@ class Server:
         except subprocess.TimeoutExpired:
             self.process.kill()
         self.log.close()
-
-    # --- what a person would look at ---
 
     def files(self):
         return {f["path"]: f["chunks"] for f in self.http.get("/files").json()}

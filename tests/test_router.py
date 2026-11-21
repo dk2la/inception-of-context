@@ -3,9 +3,6 @@ import pytest
 from p2.services.router import router_service
 
 
-# --- "is there a function X?" ---
-
-
 @pytest.mark.parametrize("question, name", [
     ("Is there a function power?", "power"),
     ("is there a method divide", "divide"),
@@ -50,9 +47,6 @@ def test_other_questions_are_left_to_the_model(question):
     assert router_service.route_question(question) is None
 
 
-# --- "what functions are in file Y?" ---
-
-
 @pytest.mark.parametrize("question, filename", [
     ("What functions are in core.py?", "core.py"),
     ("what methods are defined in calculator/cli.py", "calculator/cli.py"),
@@ -87,9 +81,6 @@ def test_other_questions_about_a_file_are_left_to_the_model(question):
 def test_the_two_kinds_of_question_do_not_get_mixed_up():
     assert router_service.route_question("Is there a function power?") == ("has_function", "power")
     assert router_service.route_question("Is there a function in core.py?") is None
-
-
-# --- the same questions in Russian ---
 
 
 @pytest.mark.parametrize("question, name", [

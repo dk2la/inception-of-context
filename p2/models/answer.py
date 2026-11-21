@@ -3,9 +3,9 @@ from typing import TypedDict
 
 
 class Answer(TypedDict):
-    answer: str  # the text shown to the user
-    sources: list  # the Chunks the answer is based on
-    used_llm: bool  # False when it came from the Index alone (symbol questions, empty Index)
+    answer: str
+    sources: list
+    used_llm: bool
 
 
 class AnswerFactory:

@@ -14,6 +14,6 @@ JOBS = [("add", 2, 3), ("multiply", 6, 7), ("divide", 10, 4), ("subtract", 9, 12
 calculator = Calculator()
 print("calculator service started", flush=True)
 for name, a, b in JOBS:
-    time.sleep(1.5)  # slow enough to watch the log arrive on the dashboard
+    time.sleep(1.5)
     print(f"job {name}({a}, {b}) = {getattr(calculator, name)(a, b)}", flush=True)
 print("all jobs done", flush=True)

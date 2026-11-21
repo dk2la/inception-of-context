@@ -11,7 +11,6 @@ from bonus.services.git_commit import git_commit_service
 
 class PullRequestService:
     def __init__(self, pulls, patch_loop_service, target_files_repository, attempt_factory, git_commit_service, events):
-        # debug: pulls is the in-memory pull_repository. Merge holds the same patch_lock as the Patch Loop.
         self.pulls = pulls
         self.patch_loop_service = patch_loop_service
         self.target_files_repository = target_files_repository
@@ -21,15 +20,10 @@ class PullRequestService:
 
     def view(self, pull):
         """The pull request as JSON. base (the bytes the Patch was checked against) stays on the server."""
-        # debug: return has number, title, intent, state, files, checks, attempts, created, merge. No "base".
         return {key: value for key, value in pull.items() if key != "base"}
 
     def open(self, intent, patch, attempts, diffs):
         """Open a pull request for a Patch that passed the Sanity Checks and the Validation Command."""
-        # debug: intent == "add a power function to Calculator", attempts[-1]["ok"] is True, the disk is restored.
-        # return["number"] == 1, return["state"] == "open", return["title"] == patch["summary"]
-        # checks == {"sanity": True, "validation": True, "log": "3 passed"}
-        # base is the current bytes of every file the Patch touches; Merge refuses when they changed.
         last = attempts[-1]
         pull = self.pulls.add({
             "title": patch["summary"] or intent,
@@ -47,21 +41,14 @@ class PullRequestService:
         return self.view(pull)
 
     def list(self):
-        # debug: GET /bonus/pulls -> [#2 view, #1 view]
         return [self.view(pull) for pull in self.pulls.all()]
 
     def reply(self, status, pull, attempts, git, error=None):
-        # debug: the same keys as a bonus patch reply, so the dashboard draws a Merge like a run.
         return {"status": status, "attempts": attempts, "patch": pull["patch"], "diffs": pull["files"],
                 "git": git, "dry_run": False, "error": error, "pull": self.view(pull)}
 
     def merge(self, number, git_commit=True):
         """Apply exactly the stored Patch, validate it again, then optionally commit. None for an unknown number."""
-        # debug: POST /bonus/pulls/1/merge {"git_commit": true}
-        # green: status == "success", state == "merged", the Patch stays on disk, git is the commit result
-        # a file changed since the pull request was opened: status == "conflict", nothing written, still open
-        # validation red at merge: status == "failed", the files are rolled back, the pull request stays open
-        # already merged or closed: status == "refused"
         with self.patch_loop_service.patch_lock:
             pull = self.pulls.get(number)
             if pull is None:
@@ -94,7 +81,6 @@ class PullRequestService:
 
     def close(self, number):
         """Close an open pull request without touching the disk. None for an unknown number."""
-        # debug: POST /bonus/pulls/1/close -> return["state"] == "closed". Closing it again changes nothing.
         pull = self.pulls.get(number)
         if pull is None:
             return None

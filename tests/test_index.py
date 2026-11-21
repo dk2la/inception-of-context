@@ -27,8 +27,6 @@ def test_chunk_id_keeps_path_and_text_apart():
     assert chunk_factory.chunk_id("a", "bc") != chunk_factory.chunk_id("ab", "c")
 
 
-# --- helpers ---
-
 CALC = '''import math
 
 
@@ -59,9 +57,6 @@ def names_of(path):
     return sorted(m["name"] for m in found["metadatas"])
 
 
-# --- the collection ---
-
-
 def test_collection_starts_empty_and_is_shared(temp_index):
     assert chroma_db.get_collection().count() == 0
     assert chroma_db.get_collection() is chroma_db.get_collection()
@@ -69,7 +64,7 @@ def test_collection_starts_empty_and_is_shared(temp_index):
 
 def test_index_survives_a_restart(temp_index):
     chroma_db.get_collection().add(ids=["x"], documents=["hello"], metadatas=[{"path": "a.py"}])
-    chroma_db._collection = None  # like a new process
+    chroma_db._collection = None
     assert chroma_db.get_collection().count() == 1
 
 
@@ -78,12 +73,9 @@ def test_temp_index_does_not_point_at_the_real_folders(temp_index):
     assert settings.TARGET_DIR == temp_index
 
 
-# --- indexer_service.reindex_file: a new file ---
-
-
 def test_reindex_adds_the_chunks_of_a_new_file(temp_index):
     count = indexer_service.reindex_file(write(temp_index, "calc.py", CALC))
-    assert count == 4  # module header, class, two methods
+    assert count == 4
     assert chroma_db.get_collection().count() == 4
     assert names_of("calc.py") == ["<module>", "Calculator", "Calculator.add", "Calculator.subtract"]
 
@@ -105,9 +97,6 @@ def test_identical_functions_in_one_file_do_not_crash(temp_index):
     assert indexer_service.reindex_file(write(temp_index, "dup.py", text)) == 1
 
 
-# --- indexer_service.reindex_file: a changed file ---
-
-
 def test_editing_one_function_replaces_only_its_chunk(temp_index):
     path = write(temp_index, "m.py", "import os\n\n\ndef a():\n    return 1\n\n\ndef b():\n    return 2\n")
     indexer_service.reindex_file(path)
@@ -117,7 +106,7 @@ def test_editing_one_function_replaces_only_its_chunk(temp_index):
     after = ids_of("m.py")
     assert len(before - after) == 1
     assert len(after - before) == 1
-    assert len(before & after) == 2  # the module header and a() are untouched
+    assert len(before & after) == 2
 
 
 def test_reindexing_an_unchanged_file_writes_nothing(temp_index):
@@ -148,9 +137,6 @@ def test_editing_one_file_leaves_other_files_alone(temp_index):
     write(temp_index, "a.py", "def a():\n    return 2\n")
     indexer_service.reindex_file(a)
     assert ids_of("b.py") == b_ids
-
-
-# --- indexer_service.reindex_file: deleted, skipped, binary ---
 
 
 def test_deleting_a_file_removes_its_chunks(temp_index):
@@ -201,9 +187,6 @@ def test_a_path_outside_the_target_project_is_ignored(temp_index, tmp_path):
     assert chroma_db.get_collection().count() == 0
 
 
-# --- file_repository.list_files ---
-
-
 def test_list_files_returns_sorted_absolute_paths_without_junk(tmp_path):
     for name in ["main.py", "calculator/core.py", ".git/config", "venv/lib/site.py",
                  "calculator/__pycache__/core.pyc", "calculator/core.py.ioc.tmp", ".env", "docs/build.md"]:
@@ -221,9 +204,6 @@ def test_list_files_on_the_real_target(real_target):
     found = [os.path.relpath(p, real_target) for p in file_repository.list_files(real_target)]
     assert "calculator/core.py" in found
     assert "main.py" in found
-
-
-# --- indexer_service.index_all ---
 
 
 def test_index_all_indexes_every_file_and_returns_the_count(temp_index):
@@ -278,9 +258,6 @@ def test_index_all_on_the_real_target_finds_the_four_methods(temp_index, real_ta
     assert methods == ["Calculator.add", "Calculator.divide", "Calculator.multiply", "Calculator.subtract"]
 
 
-# --- the console command ---
-
-
 def test_console_command_prints_a_summary(temp_index, monkeypatch, capsys):
     write(temp_index, "a.py", "def a():\n    pass\n")
     write(temp_index, "b.py", "def b():\n    pass\n\n\ndef c():\n    pass\n")
@@ -300,7 +277,7 @@ def test_moved_chunks_keep_their_ids_but_get_new_line_numbers(temp_index):
     path = write(temp_index, "m.py", "def a():\n    return 1\n")
     indexer_service.reindex_file(path)
     before = ids_of("m.py")
-    write(temp_index, "m.py", "import os\n\n\ndef a():\n    return 1\n")  # a() moved down
+    write(temp_index, "m.py", "import os\n\n\ndef a():\n    return 1\n")
     indexer_service.reindex_file(path)
     found = chroma_db.get_collection().get(where={"name": "a"}, include=["metadatas"])
     assert [m["start_line"] for m in found["metadatas"]] == [4]
@@ -311,6 +288,6 @@ def test_moved_chunks_do_not_change_the_index_version(temp_index):
     path = write(temp_index, "m.py", "def a():\n    return 1\n")
     indexer_service.reindex_file(path)
     version = chroma_db.INDEX_VERSION
-    write(temp_index, "m.py", "\n\ndef a():\n    return 1\n")  # a() moved down, nothing else changed
+    write(temp_index, "m.py", "\n\ndef a():\n    return 1\n")
     indexer_service.reindex_file(path)
     assert chroma_db.INDEX_VERSION == version

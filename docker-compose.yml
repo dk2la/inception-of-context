@@ -5,9 +5,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Bind mount: the Target Project on your disk, seen live inside the container.
       - ./target:/workspace
-      # Named volume: the Index. It lives outside the Target Project, so the Watcher never sees its writes.
       - chroma_data:/data/chroma
     environment:
       TARGET_DIR: /workspace
@@ -17,11 +15,9 @@ services:
     depends_on:
       - ollama
 
-  # No published port: ioc reaches Ollama over the compose network at http://ollama:11434.
   ollama:
     image: ollama/ollama
     volumes:
-      # Named volume: the downloaded models survive restarts.
       - ollama_models:/root/.ollama
     restart: unless-stopped
 

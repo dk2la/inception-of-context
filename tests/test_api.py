@@ -2,9 +2,6 @@ from p1.config.settings import settings
 import p1.core.llm as llm_module
 
 
-# --- POST /ask ---
-
-
 def test_ask_returns_the_answer_and_says_the_model_was_used(client, fake_llm):
     fake_llm.replies = ["Use Calculator.divide."]
     response = client.post("/ask", json={"question": "How do I divide?"})
@@ -35,9 +32,6 @@ def test_ask_k_defaults_to_five(client, fake_llm):
 
 def test_ask_without_a_question_is_a_422(client, fake_llm):
     assert client.post("/ask", json={}).status_code == 422
-
-
-# --- symbol questions never reach the model ---
 
 
 def test_ask_says_no_to_a_function_that_does_not_exist(client, fake_llm):
@@ -72,9 +66,6 @@ def test_a_symbol_question_still_works_while_the_model_is_down(client, fake_llm)
     assert response.json()["used_llm"] is False
 
 
-# --- Ollama is down ---
-
-
 def test_ask_is_a_503_with_the_message_when_the_model_is_unreachable(client, fake_llm):
     fake_llm.error = llm_module.LLMError("Ollama is not reachable at http://x")
     response = client.post("/ask", json={"question": "How does divide work?"})
@@ -90,7 +81,7 @@ def test_other_routes_keep_working_when_the_model_is_unreachable(client, fake_ll
 
 
 def test_ask_is_a_503_when_nothing_listens_on_the_ollama_address(client, monkeypatch):
-    monkeypatch.setattr(settings, "OLLAMA_HOST", "http://127.0.0.1:9")  # port 9 refuses at once
+    monkeypatch.setattr(settings, "OLLAMA_HOST", "http://127.0.0.1:9")
     response = client.post("/ask", json={"question": "How does divide work?"})
     assert response.status_code == 503
     assert "127.0.0.1:9" in response.json()["detail"]

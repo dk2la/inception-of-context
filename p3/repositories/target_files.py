@@ -32,7 +32,6 @@ class TargetFilesRepository:
                     f.write(data)
             elif os.path.exists(path):
                 os.remove(path)
-                # The folders made for a new file go too, as long as nothing else is in them.
                 folder = os.path.dirname(path)
                 while os.path.normpath(folder) != os.path.normpath(self.settings.TARGET_DIR) and not os.listdir(folder):
                     os.rmdir(folder)
@@ -54,7 +53,7 @@ class TargetFilesRepository:
                     with open(path + ".ioc.tmp", "w", encoding="utf-8") as f:
                         f.write(entry["content"])
                     if os.path.exists(path):
-                        shutil.copymode(path, path + ".ioc.tmp")  # os.replace must not change the file's mode
+                        shutil.copymode(path, path + ".ioc.tmp")
             for path in paths:
                 os.replace(path + ".ioc.tmp", path)
         except Exception:

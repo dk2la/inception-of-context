@@ -13,7 +13,6 @@ class QuestionsView:
         self.ask_service = ask_service
         self.router = APIRouter()
         self.router.add_api_route("/context", self.context, methods=["POST"], response_model=ContextResponse)
-        # exclude_unset: a source answered from the Index has no similarity or score, so it does not show them as null
         self.router.add_api_route("/ask", self.ask, methods=["POST"], response_model=AskResponse,
                                   response_model_exclude_unset=True)
 

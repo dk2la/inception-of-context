@@ -5,9 +5,6 @@ from p1.repositories.file_repository import file_repository
 from p1.services.chunker import chunker_service
 
 
-# --- chunk_factory.make_chunk ---
-
-
 def test_make_chunk_has_exactly_the_seven_keys():
     chunk = chunk_factory.make_chunk("a.py", 1, 2, "f", "function", "def f():\n    pass")
     assert chunk == {
@@ -29,8 +26,6 @@ def test_hash_depends_only_on_text():
     assert a["hash"] == b["hash"]
     assert a["hash"] != c["hash"]
 
-
-# --- top-level functions ---
 
 TWO_FUNCTIONS = '''import sys
 
@@ -74,8 +69,6 @@ def test_nested_function_is_not_a_chunk():
     assert [c["name"] for c in chunks] == ["outer"]
 
 
-# --- classes and methods ---
-
 CALCULATOR = '''class Calculator:
     def add(self, a, b):
         return a + b
@@ -117,9 +110,6 @@ def test_chunks_follow_file_order():
     assert names == ["Calculator", "Calculator.add", "Calculator.subtract", "helper"]
 
 
-# --- decorators ---
-
-
 def test_decorator_is_part_of_the_function_chunk():
     text = "@staticmethod\ndef square(x):\n    return x * x\n"
     [chunk] = chunker_service.chunk_python("a.py", text)
@@ -140,8 +130,6 @@ def test_decorated_class_and_method():
         ("Point.x", "method", 3, 5),
     ]
 
-
-# --- the module header ---
 
 MAIN = '''import sys
 from calculator.cli import run
@@ -180,8 +168,6 @@ def test_decorator_and_method_lines_stay_out_of_the_module_header():
     header = chunker_service.chunk_python("a.py", text)[0]
     assert header["text"] == "import os"
 
-
-# --- regex fallback ---
 
 SHELL = '''#!/bin/sh
 set -e
@@ -226,9 +212,6 @@ def test_regex_leaves_out_blank_lines_at_the_edges_of_a_chunk():
     assert summary(chunks) == [("a", "definition", 1, 2), ("b", "definition", 5, 6)]
 
 
-# --- Python that does not parse ---
-
-
 def test_broken_python_falls_back_to_regex():
     chunks = chunker_service.chunk_python("a.py", "def add(a, b:\n    return a + b\n")
     assert [(c["name"], c["kind"]) for c in chunks] == [("add", "definition")]
@@ -246,8 +229,6 @@ def test_null_byte_does_not_crash():
 def test_valid_python_does_not_use_the_fallback():
     assert chunker_service.chunk_python("a.py", "def f():\n    pass\n")[0]["kind"] == "function"
 
-
-# --- YAML ---
 
 YAML = '''# IoC settings
 validate: python -m py_compile {files} && python -m pytest -q
@@ -289,8 +270,6 @@ def test_yaml_real_config(real_target):
     assert "pytest" in chunk["text"]
 
 
-# --- Markdown ---
-
 MARKDOWN = '''Intro text.
 # Calculator
 A tiny calculator.
@@ -330,9 +309,6 @@ def test_markdown_real_readme(real_target):
     assert [c for c in chunks if c["kind"] == "heading"]
 
 
-# --- chunker_service.chunk_file picks the chunker ---
-
-
 def first_kind(path, text):
     return chunker_service.chunk_file(path, text)[0]["kind"]
 
@@ -363,9 +339,6 @@ def test_real_calculator_has_four_methods(real_target):
     assert methods == ["Calculator.add", "Calculator.subtract", "Calculator.multiply", "Calculator.divide"]
 
 
-# --- skipped paths ---
-
-
 def test_normal_source_files_are_not_skipped():
     for path in ["calculator/core.py", "main.py", "build.py", "docs/building.md", "ioc.config.yml"]:
         assert not file_repository.is_skipped(path), path
@@ -385,9 +358,6 @@ def test_hidden_files_and_temporary_files_are_skipped():
 
 def test_leading_dot_slash_is_not_a_hidden_folder():
     assert not file_repository.is_skipped("./main.py")
-
-
-# --- reading text ---
 
 
 def test_read_text_returns_text_as_written(tmp_path):

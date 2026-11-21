@@ -15,7 +15,6 @@ ROOT = pathlib.Path(__file__).parent.parent
 PARTS = ["p1", "p2", "p3"]
 LAYERS = ["models", "schemas", "repositories", "services", "views"]
 
-# For each layer: the layers it may import (in its own part or an earlier one). p1.config and p1.core always.
 ALLOWED = {
     "models": {"models"},
     "schemas": {"schemas"},
@@ -40,7 +39,7 @@ def files_of(*folders):
     return sorted(p for folder in folders for p in (ROOT / folder).rglob("*.py") if "__pycache__" not in p.parts)
 
 
-SHARED = {"config", "core"}  # only in p1, the part every other part builds on
+SHARED = {"config", "core"}
 
 
 def test_every_part_has_the_same_layers():
@@ -57,7 +56,7 @@ def test_a_layer_imports_only_the_layers_below_it(part, layer):
         for name in imported_modules(path):
             parts = name.split(".")
             if parts[0] not in PARTS or len(parts) < 2 or parts[1] not in LAYERS:
-                continue  # config, core, the standard library or a package
+                continue
             where = f"{part}/{layer}/{path.name} imports {name}"
             assert parts[0] in earlier_or_same, where + " (a later part)"
             assert parts[1] in ALLOWED[layer], where + " (a layer above it)"
@@ -81,7 +80,6 @@ def test_config_and_core_import_no_layer_and_no_other_part():
 
 def test_all_source_files_are_inside_p1_p2_p3():
     """The subject (Chapter IV): source lives in p1, p2 or p3, plus the optional bonus folder."""
-    # bonus/ is the optional folder the subject allows next to p1, p2 and p3.
     allowed = {*PARTS, "bonus", "tests", "target", "docs", ".git"}
     outside = list(ROOT.glob("*.py"))
     for folder in ROOT.iterdir():

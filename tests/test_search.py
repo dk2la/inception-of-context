@@ -11,8 +11,6 @@ import p2.services.search as search_module
 from p2.services.search import search_service
 
 
-# --- helpers ---
-
 MATH = '''def divide(a, b):
     return a / b
 
@@ -32,9 +30,6 @@ def write(target, name, text):
 
 def name_of(chunk_id):
     return chroma_db.get_collection().get(ids=[chunk_id], include=["metadatas"])["metadatas"][0]["name"]
-
-
-# --- search_service.vector_search ---
 
 
 def test_vector_search_ranks_the_chunk_with_the_closest_meaning_first(temp_index):
@@ -62,9 +57,6 @@ def test_vector_search_on_an_empty_index_returns_nothing(temp_index):
     assert search_service.vector_search("anything") == ([], {})
 
 
-# --- search_service.tokenize ---
-
-
 @pytest.mark.parametrize("text, tokens", [
     ("def divide(self, a, b):", ["def", "divide", "self", "a", "b"]),
     ("Is there a divide_by_zero?", ["is", "there", "a", "divide", "by", "zero"]),
@@ -76,8 +68,6 @@ def test_vector_search_on_an_empty_index_returns_nothing(temp_index):
 def test_tokenize_gives_lowercase_words_and_digits(text, tokens):
     assert search_service.tokenize(text) == tokens
 
-
-# --- search_service.bm25_search ---
 
 THREE = '''def add(a, b):
     return a + b
@@ -106,9 +96,6 @@ def test_bm25_search_returns_every_chunk_even_without_shared_words(temp_index):
 
 def test_bm25_search_on_an_empty_index_returns_nothing(temp_index):
     assert search_service.bm25_search("anything") == []
-
-
-# --- the BM25 cache ---
 
 
 def count_bm25_builds(monkeypatch):
@@ -147,19 +134,15 @@ def test_bm25_forgets_the_chunks_of_a_deleted_file(temp_index):
     os.remove(path)
     indexer_service.reindex_file(path)
     assert search_service.bm25_search("anything") == []
-    assert old_ids  # the Chunks were there before the delete
+    assert old_ids
 
 
 def test_bm25_does_not_reuse_the_cache_of_another_index(temp_index, tmp_path, monkeypatch):
     indexer_service.reindex_file(write(temp_index, "math.py", THREE))
     search_service.bm25_search("divide")
-    # A second, empty Index: nothing was reindexed, so INDEX_VERSION is still the same number.
     monkeypatch.setattr(settings, "CHROMA_DIR", str(tmp_path / "other_chroma"))
     monkeypatch.setattr(chroma_db, "_collection", None)
     assert search_service.bm25_search("divide") == []
-
-
-# --- search_service.rrf_merge ---
 
 
 def test_rrf_gives_one_over_k_plus_rank_for_each_list():
@@ -184,8 +167,6 @@ def test_rrf_an_id_missing_from_one_list_gets_points_from_the_other_only():
 def test_rrf_of_nothing_is_nothing():
     assert search_service.rrf_merge([], []) == {}
 
-
-# --- search ---
 
 FOUR = '''def add(a, b):
     return a + b
@@ -241,9 +222,6 @@ def test_search_with_k_zero_or_negative_returns_nothing(temp_index, k):
     assert search_service.search("divide", k) == []
 
 
-# --- the Watcher changes the Index while a search runs ---
-
-
 def test_a_change_while_bm25_reads_the_index_makes_the_next_search_rebuild(temp_index, monkeypatch):
     """If the Index changes between reading the version and reading the texts, the cache must not look fresh."""
     path = write(temp_index, "math.py", MATH)
@@ -252,13 +230,13 @@ def test_a_change_while_bm25_reads_the_index_makes_the_next_search_rebuild(temp_
 
     def all_texts_then_the_watcher_changes_the_file():
         found = real_all_texts()
-        monkeypatch.setattr(search_repository, "all_texts", real_all_texts)  # only once
+        monkeypatch.setattr(search_repository, "all_texts", real_all_texts)
         write(temp_index, "math.py", "def square_root(x):\n    return x ** 0.5\n")
         indexer_service.reindex_file(path)
         return found
 
     monkeypatch.setattr(search_repository, "all_texts", all_texts_then_the_watcher_changes_the_file)
-    search_service.bm25_search("divide")  # built from the old texts while the file changed
+    search_service.bm25_search("divide")
     assert [name_of(i) for i in search_service.bm25_search("square root")] == ["square_root"]
 
 
@@ -267,7 +245,7 @@ def test_search_skips_a_chunk_deleted_after_it_was_ranked(temp_index, monkeypatc
     real_get_many = search_repository.get_many
 
     def get_many_after_a_delete(ids):
-        chroma_db.get_collection().delete(ids=[ids[0]])  # the Watcher removes the best Chunk just now
+        chroma_db.get_collection().delete(ids=[ids[0]])
         return real_get_many(ids)
 
     monkeypatch.setattr(search_repository, "get_many", get_many_after_a_delete)

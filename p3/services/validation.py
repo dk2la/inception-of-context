@@ -29,18 +29,11 @@ class ValidationService:
     def run_validation(self, changed_files):
         """Run the Validation Command. Return (ok, log)."""
         py_files = [p for p in changed_files if p.endswith(".py") and os.path.isfile(self.file_repository.full_path(p))]
-        # "-" makes py_compile read file names from the (empty) stdin, so it compiles nothing and succeeds
         files_text = " ".join(shlex.quote(p) for p in py_files) or "-"
         command = self.load_validation_command().replace("{files}", files_text)
-        # "python" in the command must be the interpreter that runs this server, even if it is not on PATH
         path = os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", "")
-        # Python skips recompiling a file whose size and modification second match its old .pyc. After a Rollback
-        # that can run the patched code, so validation keeps its .pyc files in a temporary folder, not in the project.
-        # For the same reason (nothing new may be left in the project) pytest gets no .pytest_cache folder.
         with tempfile.TemporaryDirectory() as pycache:
             env = dict(os.environ, PATH=path, PYTHONPYCACHEPREFIX=pycache, PYTEST_ADDOPTS="-p no:cacheprovider")
-            # Popen, not run: with shell=True, run() on timeout kills only the shell, and pytest keeps running.
-            # start_new_session puts the shell and its children in one process group that we can kill together.
             proc = subprocess.Popen(
                 command,
                 shell=True,

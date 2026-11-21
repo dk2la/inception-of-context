@@ -14,9 +14,6 @@ class LLMError(Exception):
 
 class LLMClient:
     def __init__(self, settings):
-        # debug: live starts {}. During a call it holds the text so far, per model, for GET /llm/live:
-        # live["qwen2.5-coder:3b"] == {"id": 3, "model": "qwen2.5-coder:3b", "text": '{"summary": "add po',
-        #                              "done": False, "error": None, "started": 1740000000.0}
         self.settings = settings
         self.live = {}
         self._next_id = 1
@@ -24,7 +21,6 @@ class LLMClient:
 
     def live_snapshot(self):
         """A copy of the latest generation of every model, safe to read while a call is still writing."""
-        # debug: return == [{"id": 3, "model": "qwen2.5-coder:3b", "text": "...", "done": False, ...}]
         with self._lock:
             return [dict(state) for state in self.live.values()]
 
@@ -38,8 +34,6 @@ class LLMClient:
 
     def _read_stream(self, response, state):
         """Ollama streams one JSON object per line. Append each piece of text as it arrives."""
-        # debug: lines b'{"response": "Hel", "done": false}', b'{"response": "lo", "done": true}'
-        # state["text"] goes "Hel", then "Hello". A line {"error": "model not found"} raises LLMError.
         for line in response:
             if not line.strip():
                 continue

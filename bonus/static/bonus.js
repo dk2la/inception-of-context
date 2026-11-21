@@ -1,8 +1,4 @@
-// The Bonus tab. Loaded only by bonus.app, after the mandatory dashboard script, whose helpers it reuses
-// (el, make, badge, post, showMessage, showTab, TABS, attemptCard, renderPatchResult, refreshOverview).
-// It adds one tab and leaves the mandatory tabs exactly as they are, so the mandatory part is shown untouched.
 (function () {
-  // ---------- styles of this tab ----------
   const style = document.createElement("style");
   style.textContent = `
   .bonus-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
@@ -70,7 +66,6 @@
   `;
   document.head.append(style);
 
-  // ---------- the tab and its button ----------
   const nav = document.querySelector("nav[role=tablist]");
   const main = document.querySelector("main");
   if (!nav || !main || typeof showTab !== "function") return;
@@ -81,7 +76,7 @@
   tabButton.append(el("span", "★ "), "Bonus ", el("kbd", "7"));
   tabButton.onclick = () => showTab("bonus");
   nav.append(tabButton);
-  TABS.push("bonus"); // key 7 now opens it, through the mandatory key handler
+  TABS.push("bonus");
 
   function card(title, chip, ...body) {
     const head = make("div", "panel-head", el("h3", title));
@@ -100,7 +95,6 @@
     return box;
   }
 
-  // Reindex
   const reindexButton = el("button", "Reindex now", "btn primary");
   reindexButton.id = "bonus-reindex";
   const reindexResult = el("span", "", "muted");
@@ -108,7 +102,6 @@
     lead("Reads the whole Target Project again and makes the Index match it. Useful when the Watcher missed an event."),
     make("div", "bonus-row", reindexButton, reindexResult));
 
-  // Bonus patch
   const intent = document.createElement("textarea");
   intent.id = "bonus-intent";
   intent.rows = 3;
@@ -132,23 +125,20 @@
          "Patch waits for you to merge it, a visual diff of what was applied, and a git commit whose message the model writes."),
     make("div", "panel composer", intent, composerBar), patchMessage, patchResult);
 
-  // Live validation
   const live = document.createElement("ol");
   live.id = "bonus-live";
   const liveEmpty = el("div", "Nothing yet. Run a bonus patch: every Attempt and its validation appear here live.", "empty");
   const liveCard = make("div", "panel bonus-card",
     make("div", "panel-head", el("h3", "Live validation"), el("span", "SSE · /bonus/events", "bonus-chip")), live, liveEmpty);
 
-  // Pull requests
   const pullList = document.createElement("ul");
   pullList.id = "bonus-pulls";
   const pullEmpty = el("div", "No pull requests yet. Turn on \u201cpull request\u201d and run a bonus patch.", "empty");
   const pullsCard = make("div", "panel bonus-card",
     make("div", "panel-head", el("h3", "Pull requests"), el("span", "GET /bonus/pulls", "bonus-chip")), pullList, pullEmpty);
-  const expandedPulls = new Set(); // the pull requests whose diff is open; kept across reloads of the list
-  const pullNotes = {}; // the last message of a Merge or Close, shown under that pull request
+  const expandedPulls = new Set();
+  const pullNotes = {};
 
-  // Docker watch
   const service = Object.assign(document.createElement("input"), {type: "text", id: "bonus-service", placeholder: "container name",
     value: "calculator"});
   const dockerIntent = Object.assign(document.createElement("input"), {type: "text", id: "bonus-docker-intent",
@@ -160,7 +150,6 @@
   resetButton.title = "Put target/ back as it was before the first demo run (undoes the fix)";
   demoButton.title = "Same as make crash: runs target/ as container \u201ccalculator\u201d; its last job crashes";
   const dockerStatus = badge("not watching");
-  // The container's log as it arrives; a traceback is drawn red. Demo: `make crash`, then Watch "calculator".
   const dockerLog = make("pre", "docker-log");
   dockerLog.id = "bonus-docker-log";
   dockerLog.append(el("span", "No log yet. Run `make crash`, then Watch \u201ccalculator\u201d.", "muted"));
@@ -185,7 +174,6 @@
     make("div", "bonus-row", service), make("div", "bonus-row", dockerIntent),
     make("div", "bonus-row", demoButton, watchButton, stopButton, resetButton, dockerStatus), dockerLog);
 
-  // Patch vs bonus patch
   const rows = [
     ["Route", "POST /patch", "POST /bonus/patch"],
     ["Loop", "up to 3 attempts, rollback", "the same loop, the same lock"],
@@ -213,8 +201,6 @@
   section.setAttribute("role", "tabpanel");
   section.hidden = true;
   main.append(section);
-
-  // ---------- behaviour ----------
 
   reindexButton.onclick = async () => {
     reindexButton.disabled = true;
@@ -259,7 +245,7 @@
   const source = new EventSource("/bonus/events");
   source.onmessage = (message) => {
     const event = JSON.parse(message.data);
-    if (event.type === "docker_log") { logLine(event.detail.line); return; } // the log goes to its own box
+    if (event.type === "docker_log") { logLine(event.detail.line); return; }
     if (event.type === "docker_rerun") { logMark("rerun after the fix"); inTraceback = false; }
     if (event.type === "docker_verified") logMark(event.detail.ok ? "\u2713 verified: no crash" : "\u2717 still crashing", event.detail.ok ? "ok" : "tb");
     const [text, tone] = liveLine(event);
@@ -269,7 +255,6 @@
     if (live.children.length > 60) live.lastElementChild.remove();
   };
 
-  // A unified diff with added lines green, removed lines red, hunk headers in the accent colour.
   function diffView(text) {
     const pre = make("pre", "diff");
     for (const line of (text || "(no textual change)").split("\n")) {
@@ -290,7 +275,6 @@
 
   const PR_TONE = {open: "accent", merged: "ok", closed: ""};
 
-  // One pull request, drawn like a code-review page: title, checks, files changed, then Merge / Close.
   function pullBox(pull, note) {
     const head = make("div", "pr-head", badge(pull.state, PR_TONE[pull.state]),
       make("h4", "", el("span", "#" + pull.number + " ", "num"), pull.title));
@@ -330,7 +314,6 @@
     return box;
   }
 
-  // +added -removed lines over every file of a pull request, like the GitHub list.
   function diffStat(files) {
     let added = 0, removed = 0;
     for (const file of files || []) {
@@ -408,7 +391,6 @@
 
   function renderBonus(container, data, seconds) {
     if (data.status === "open" && data.pull) {
-      // the pull request itself lives in the Pull requests card, opened, so its diff is in one place only
       expandedPulls.add(data.pull.number);
       container.replaceChildren(make("div", "banner ok", el("div", "\u2713", "icon"),
         make("div", "", el("strong", "Opened pull request #" + data.pull.number + ": " + data.pull.title),
@@ -467,7 +449,6 @@
   }
 
   runButton.onclick = runBonusPatch;
-  // A dry run writes nothing and a pull request waits for Merge, so only one of them can be on.
   const dryBox = document.getElementById("bonus-dry");
   const prBox = document.getElementById("bonus-pr");
   dryBox.onchange = () => { if (dryBox.checked) prBox.checked = false; };
@@ -479,7 +460,6 @@
     dockerStatus.textContent = status.error ? status.error : status.running ? "watching " + status.service : "not watching";
     dockerStatus.className = "badge " + (status.error ? "fail" : status.running ? "ok" : "");
   }
-  // One click for the defense: start the crashing demo service, then watch it.
   demoButton.onclick = async () => {
     demoButton.disabled = true;
     try {

@@ -35,7 +35,7 @@ class IndexCommand:
         print(f"indexed {chunks} chunks from {files} files")
         if args.watch:
             observer = self.watcher_service.watch()
-            printed = 0  # how many events were shown already
+            printed = 0
             try:
                 while True:
                     for event in self.event_repository.events_since(printed):
