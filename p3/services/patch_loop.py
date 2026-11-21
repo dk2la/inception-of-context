@@ -100,7 +100,7 @@ class PatchLoopService:
             parts.append(f"YOUR PREVIOUS ATTEMPT FAILED.\nYour previous Patch:\n{patch}\nWhy it failed:\n{error}")
         return "\n\n".join(parts)
 
-    def run_attempt(self, intent, k, previous, number):
+    def run_attempt(self, intent, k, previous, number, keep=True):
         """One Attempt: generate, parse, Sanity Checks, snapshot, apply, validate. A failed Attempt is rolled back."""
         # debug: number == 1, intent == "add a power function to Calculator", k == 5
         # attempt starts {"number": 1, "ok": False, "patch": None, "error": None, ...}
@@ -108,6 +108,7 @@ class PatchLoopService:
         # bad JSON or a sanity refusal: return before any disk write, attempt["ok"] stays False
         # pytest of the calculator passes: attempt["ok"] == True, the new core.py stays on disk
         # pytest fails: restore_snapshot writes the old bytes back, attempt["ok"] stays False
+        # keep == False (the bonus pull request): a green Patch is rolled back too, and waits for Merge
         attempt = self.attempt_factory.new_attempt(number)
         text = self.llm_client.call_llm(
             self.settings.PATCH_MODEL, self.build_patch_prompt(intent, k, previous), json_mode=True)
@@ -116,8 +117,15 @@ class PatchLoopService:
             attempt["generation"] = {"ok": False, "error": reason}
             attempt["error"] = reason
             return attempt
-        attempt["patch"] = patch
         attempt["generation"] = {"ok": True, "summary": patch["summary"]}
+        return self.try_patch(attempt, patch, keep)
+
+    def try_patch(self, attempt, patch, keep=True):
+        """Sanity Checks, snapshot, apply, validate one parsed Patch. A failure, or keep == False, rolls it back."""
+        # debug: patch is {"summary": "add power", "files": [...]}, already parsed.
+        # run_attempt calls this after the model call. The bonus Merge calls it with the stored Patch.
+        # keep == True, pytest green: the new files stay on disk. keep == False: they are restored after pytest.
+        attempt["patch"] = patch
         reason = self.sanity_service.check_patch(patch, self.settings.TARGET_DIR)
         if reason:
             attempt["sanity"] = {"ok": False, "reason": reason}
@@ -132,8 +140,10 @@ class PatchLoopService:
             attempt["validation"] = {"ok": ok, "log": log}
             if ok:
                 attempt["ok"] = True
-                return attempt  # the Watcher reindexes the changed files
-            attempt["error"] = "validation failed:\n" + self.last_lines(log)
+                if keep:
+                    return attempt  # the Watcher reindexes the changed files
+            else:
+                attempt["error"] = "validation failed:\n" + self.last_lines(log)
         except Exception as e:
             if attempt["apply"] is None:
                 attempt["apply"] = {"ok": False, "error": str(e)}
@@ -141,7 +151,7 @@ class PatchLoopService:
             else:  # applying worked, but the Validation Command could not run
                 attempt["validation"] = {"ok": False, "log": str(e)}
                 attempt["error"] = "validation failed:\n" + str(e)
-        # Whatever failed, the next Attempt starts from the original code.
+        # Whatever failed, the next Attempt starts from the original code. A green keep == False Patch is undone too.
         self.target_files_repository.restore_snapshot(snapshot)
         return attempt
 

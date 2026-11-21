@@ -515,7 +515,39 @@
   .scene-legend .ok { background: var(--ok); }
   .scene-legend .fail { background: var(--fail); }
   .scene-legend .skipped { background: #5b6273; }
-  @media (max-width: 760px) { .scene-legend { display: none; } .scene-keys { display: none; } }
+  /* the three router branches: small cubes in front of the Router; the chosen one glows */
+  .cube.mini .glyph { font-size: 13px; }
+  .cube.mini .card3d b { font: 600 10.5px var(--mono); }
+  .cube.mini .card3d span { display: none; }
+  .cube.chosen .face.top { animation: chosen 1.2s ease-in-out infinite; }
+  @keyframes chosen { 50% { box-shadow: 0 0 46px 14px color-mix(in srgb, var(--ok) 70%, transparent); } }
+  .scene-bar select { height: 28px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elev, transparent); color: var(--text); font: inherit; font-size: 12.5px; }
+  .scene-live { flex: 1 1 380px; }
+  .scene-live input { flex: 1; min-width: 140px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; font-size: 13px; }
+  .scene-detail { position: absolute; right: 16px; top: 112px; bottom: 60px; width: min(430px, calc(100% - 32px)); padding: 14px 16px; overflow: auto; cursor: default; user-select: text; }
+  .scene-detail[hidden] { display: none; }
+  .scene-wrap.detail-open .scene-info { display: none; }
+  .scene-wrap.info-hidden .scene-info { display: none; }
+  .scene-info .si-close { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border: 0; border-radius: 6px;
+                          background: transparent; color: var(--text-faint); font-size: 16px; line-height: 1; cursor: pointer; }
+  .scene-info .si-close:hover { color: var(--text); background: var(--bg-sunken); }
+  #scene-info-toggle.on { color: var(--accent); background: var(--accent-soft); }
+  .scene-detail .sd-head { display: flex; align-items: flex-start; gap: 8px; }
+  .scene-detail .sd-head > div { flex: 1; }
+  .scene-detail .part { font: 700 11px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+  .scene-detail h4 { margin: 4px 0 2px; font-size: 17px; }
+  .scene-detail h5 { margin: 14px 0 6px; font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
+  .scene-detail p { margin: 0 0 6px; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+  .scene-detail pre { margin: 0; max-height: 260px; overflow: auto; padding: 8px 10px; border-radius: 8px; font-size: 11.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; background: var(--code-bg, rgba(127, 127, 127, 0.1)); }
+  .scene-detail ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+  .scene-detail li { font-size: 12.5px; }
+  .scene-detail li .mono { font-size: 11.5px; }
+  .scene-detail details summary { cursor: pointer; font-size: 12.5px; padding: 2px 0; }
+  .scene-detail details pre { margin: 4px 0 6px; }
+  .scene-detail .branch { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); font-size: 12.5px; }
+  .scene-detail .branch.on { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+  .scene-detail .branch .mono { font-weight: 650; min-width: 108px; }
+  @media (max-width: 760px) { .scene-legend { display: none; } .scene-keys { display: none; } .scene-detail { top: auto; height: 50%; } }
 </style>
 </head>
 <body>
@@ -706,9 +738,9 @@
   <div class="page-head">
     <div>
       <h2>3D View</h2>
-      <p>The three parts as levels: Part 1 at the bottom, Part 3 on top. The cubes follow the live system.</p>
+      <p>Part 2 on the left, Part 1 in the middle, Part 3 on the right, each a level higher. The cubes follow the live system.</p>
     </div>
-    <div class="scene-keys muted">drag to rotate · scroll to zoom · click a cube · <kbd>←</kbd><kbd>→</kbd> tour · <kbd>F</kbd> fullscreen · <kbd>R</kbd> reset</div>
+    <div class="scene-keys muted">drag to rotate · scroll to zoom · click a cube to look inside · <kbd>←</kbd><kbd>→</kbd> tour · <kbd>F</kbd> fullscreen · <kbd>R</kbd> reset</div>
   </div>
   <div class="scene-wrap" id="scene-wrap">
     <div class="scene"><div class="world" id="world"></div></div>
@@ -727,14 +759,38 @@
         <button class="btn small ghost" data-replay="patch">Patch ✓</button>
         <button class="btn small ghost" data-replay="rollback">Patch ↺</button>
       </div>
+      <div class="seg glass">
+        <span class="seg-label">Speed</span>
+        <select id="scene-speed" aria-label="Animation speed">
+          <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option>
+          <option value="2">2×</option><option value="4">4×</option>
+        </select>
+      </div>
       <div class="spacer"></div>
       <div class="seg glass">
+        <button class="btn small ghost" id="scene-info-toggle" title="Show or hide the info card (I)">Info</button>
         <button class="btn small ghost" id="scene-orbit">Orbit</button>
         <button class="btn small ghost" id="scene-reset">Reset</button>
         <button class="btn small ghost" id="scene-full">Fullscreen</button>
       </div>
+      <form class="seg glass scene-live" id="scene-live-form">
+        <span class="seg-label">Live</span>
+        <select id="scene-live-mode" aria-label="What to run">
+          <option value="ask">Ask</option><option value="context">Retrieve</option><option value="patch">Patch</option>
+        </select>
+        <input id="scene-live-text" autocomplete="off" placeholder="a real question, e.g. what happens on division by zero?" aria-label="Live question">
+        <button class="btn small primary" id="scene-live-go" type="submit">Run</button>
+      </form>
+    </div>
+    <div class="scene-detail glass" id="scene-detail" hidden>
+      <div class="sd-head">
+        <div><div class="part" id="sd-part"></div><h4 id="sd-title"></h4></div>
+        <button class="btn small ghost" id="sd-close" aria-label="Close details">✕</button>
+      </div>
+      <div id="sd-body"></div>
     </div>
     <div class="scene-info glass">
+      <button class="si-close" id="si-close" title="Hide (I)" aria-label="Hide the info card">×</button>
       <div class="part" id="si-part"></div>
       <h4 id="si-title"></h4>
       <p id="si-text"></p>
@@ -1007,11 +1063,14 @@ function startActivityFeed() {
   source.onopen = () => {
     openedAt = Date.now() / 1000;
     list.replaceChildren(); // the server replays all its events on every (re)connect
+    SCENE.events = [];
     empty.hidden = false;
     setError("feed", "");
   };
   source.onmessage = (message) => {
     const event = JSON.parse(message.data);
+    SCENE.events.unshift(event);
+    SCENE.events.length = Math.min(SCENE.events.length, 40);
     list.prepend(eventItem(event));
     if (event.time >= openedAt - 1) animateIndexing(event); // a live change, not the replay
     empty.hidden = true;
@@ -1217,9 +1276,12 @@ async function retrieve() {
   setLaneStatus("p2", "retrieving", "accent");
   setNode("p2", "question", "ok", `"${query.slice(0, 24)}"`);
   setNode("p2", "router", "skipped", "retrieve only");
+  setRouterBranch("none");
   setNode("p2", "retriever", "active");
+  SCENE.data.p2 = {kind: "context", text: query, k: askK(), at: new Date()};
   try {
     const data = await post("/context", {query, k: askK()});
+    SCENE.data.p2.data = data;
     renderSources(document.getElementById("results"), data.results);
     setNode("p2", "retriever", "ok", `${data.results.length} chunks`);
     setNode("p2", "llm", "skipped", "not asked");
@@ -1227,6 +1289,7 @@ async function retrieve() {
     setLaneStatus("p2", "done", "ok");
     showMessage("ask-message", "");
   } catch (e) {
+    SCENE.data.p2.error = e.message;
     setNode("p2", "retriever", "fail", e.message.slice(0, 30));
     setLaneStatus("p2", "failed", "fail");
     showMessage("ask-message", "Request failed: " + e.message, true);
@@ -1249,21 +1312,28 @@ async function ask() {
   setLaneStatus("p2", "thinking", "accent");
   setNode("p2", "question", "ok", `"${question.slice(0, 24)}"`);
   setNode("p2", "router", "active");
+  setRouterBranch(null);
   setNode("p2", "retriever", "active");
   setNode("p2", "llm", "active");
+  flow3d(["p2-question", "p2-router"]);
+  SCENE.data.p2 = {kind: "ask", text: question, k: askK(), at: new Date()};
   try {
     const data = await post("/ask", {question, k: askK()});
+    SCENE.data.p2.data = data;
+    const branch = routerBranch(data);
+    SCENE.data.p2.branch = branch;
+    setRouterBranch(branch);
     if (data.used_llm) {
       setNode("p2", "router", "ok", "→ model");
       setNode("p2", "retriever", "ok", `${data.sources.length} chunks`);
       setNode("p2", "llm", "ok", answerModel);
       cube3d("ollama", "ok", answerModel);
-      flow3d(["p1-chroma", "p2-retriever", "p2-llm", "ollama", "p2-llm", "p2-answer"]);
+      flow3d(["p2-router", "p2-r-llm", "p1-chroma", "p2-retriever", "p2-llm", "ollama", "p2-llm", "p2-answer"]);
     } else {
-      setNode("p2", "router", "ok", "→ Index facts");
+      setNode("p2", "router", "ok", branch === "llm" ? "Index empty" : "→ Index facts");
       setNode("p2", "retriever", "skipped", "not needed");
       setNode("p2", "llm", "skipped", "no LLM");
-      flow3d(["p1-chroma", "p2-router", "p2-answer"]);
+      flow3d(["p2-router", `p2-r-${branch === "llm" ? "llm" : branch === "has_function" ? "has" : "file"}`, "p1-chroma", "p2-answer"]);
     }
     setNode("p2", "answer", "ok", `${data.sources.length} sources`);
     setLaneStatus("p2", "answered", "ok");
@@ -1274,6 +1344,7 @@ async function ask() {
     renderSources(document.getElementById("results"), data.sources);
     showMessage("ask-message", "");
   } catch (e) {
+    SCENE.data.p2.error = e.message;
     setNode("p2", "router", "ok");
     setNode("p2", "retriever", "ok");
     setNode("p2", "llm", "fail", e.message.startsWith("503") ? "unreachable" : "error");
@@ -1391,13 +1462,21 @@ async function runPatchLoop() {
   setNode("p3", "intent", "ok", `"${intent.slice(0, 24)}"`);
   setNode("p3", "retriever", "active", `k = ${k}`);
   setNode("p3", "coder", "active", `≤ ${maxAttempts} attempts`);
+  cube3d("ollama", "active", "coder generating");
+  flow3d(["p3-intent", "p3-retriever", "p3-coder", "ollama"]);
+  SCENE.data.p3 = {text: intent, k, maxAttempts, at: new Date()};
   try {
     const data = await post("/patch", {intent, k, max_attempts: maxAttempts});
+    SCENE.data.p3.data = data;
+    SCENE.data.p3.seconds = elapsed();
+    cube3d("ollama", "ok", "qwen2.5-coder:3b");
     clearInterval(timer);
     showPatchOnMap(data);
     renderPatchResult(result, data, elapsed());
     showMessage("patch-message", "");
   } catch (e) {
+    SCENE.data.p3.error = e.message;
+    cube3d("ollama", e.message.startsWith("503") ? "fail" : "", e.message.startsWith("503") ? "unreachable" : "");
     clearInterval(timer);
     result.replaceChildren();
     setNode("p3", "retriever", "ok");
@@ -1416,10 +1495,12 @@ async function runPatchLoop() {
 const PART_COLORS = {p1: "#38bdf8", p2: "#a78bfa", p3: "#f5b84a", ollama: "#f472b6"};
 const SCENE = {
   levels: {p1: 0, p2: 190, p3: 380},          // height of each level
+  cols: {p2: -460, p1: 0, p3: 460},           // and its place across: Part 2 left of Part 1, Part 3 right, so none hides another from above
   sizes: {p1: [74, 50], p2: [74, 50], p3: [62, 46]}, // [side, height] of the cubes
   spans: {p1: 800, p2: 800, p3: 840},          // distance from the first to the last cube
-  home: {rx: 62, rz: -32, zoom: 0.68, x: 70, z: 190},
-  cam: null, cubes: {}, orbit: true, dragging: false, step: -1, run: 0,
+  home: {rx: 54, rz: -18, zoom: 0.47, x: 40, y: -20, z: 190},
+  cam: null, cubes: {}, orbit: true, dragging: false, step: -1, run: 0, speed: 1, selected: null,
+  data: {p2: null, p3: null}, events: [], branch: null, // what the last real request returned, for the detail panel
 };
 SCENE.cam = {...SCENE.home};
 
@@ -1427,7 +1508,7 @@ const GLYPHS = {
   "p1-codebase": "▤", "p1-chunker": "✂", "p1-embedder": "∿", "p1-chroma": "◉", "p1-watcher": "◎",
   "p2-question": "?", "p2-router": "⇄", "p2-retriever": "⌕", "p2-llm": "✦", "p2-answer": "¶",
   "p3-intent": "✎", "p3-retriever": "⌕", "p3-coder": "{}", "p3-sanity": "⛨", "p3-apply": "⇆", "p3-validate": "▶",
-  "p3-outcome": "↺", "ollama": "◆",
+  "p3-outcome": "↺", "ollama": "◆", "p2-r-has": "∃", "p2-r-file": "≡", "p2-r-llm": "✦",
 };
 
 // Cube id -> [the file that does it, what it does]. Shown when a cube is clicked.
@@ -1450,6 +1531,9 @@ const EXPLAIN = {
   "p3-validate": ["p3/services/validation.py", "Runs the Validation Command from ioc.config.yml (py_compile + pytest) with a 60 s timeout."],
   "p3-outcome": ["p3/services/patch_loop.py", "Green: the Watcher reindexes the new code. Red: a byte-exact rollback, and the error goes into the next attempt (at most 3)."],
   "ollama": ["docker-compose.yml · ollama", "A separate container that serves both local models. Nothing leaves the machine."],
+  "p2-r-has": ["p2/services/router.py · has_function", "\"Is there a function X?\" Answered from the Index metadata: Yes with every place it is defined, or No. No model."],
+  "p2-r-file": ["p2/services/router.py · file_functions", "\"What functions are in core.py?\" Listed from the Index metadata in source order. No model."],
+  "p2-r-llm": ["p2/services/ask.py · ask", "Every other question: hybrid search for the top-k Chunks, then the instruct model answers from them."],
 };
 
 // The guided tour for a demo: what to look at, from where, and what moves.
@@ -1510,13 +1594,13 @@ const REPLAYS = {
   facts: [
     ["info", "Replay · a symbol question", "\"What functions are in core.py?\" is answered from the Index metadata. The retriever and the LLM are skipped."],
     ["reset", "p2"], ["on", "p2-question", "functions in core.py?"], ["go", "p2-question", "p2-router"], ["ok", "p2-question"],
-    ["on", "p2-router"], ["go", "p1-chroma", "p2-router"], ["ok", "p2-router", "→ Index facts"],
+    ["on", "p2-router"], ["branch", null], ["go", "p2-router", "p2-r-file"], ["branch", "file_functions"], ["go", "p1-chroma", "p2-router"], ["ok", "p2-router", "→ Index facts"],
     ["skip", "p2-retriever", "not needed"], ["skip", "p2-llm", "no LLM"], ["go", "p2-router", "p2-answer"], ["ok", "p2-answer", "4 functions"],
   ],
   ask: [
     ["info", "Replay · a question for the model", "Hybrid search finds the Chunks, the model answers only from them, and the sources come back with the answer."],
     ["reset", "p2"], ["on", "p2-question", "division by zero?"], ["go", "p2-question", "p2-router"], ["ok", "p2-question"],
-    ["on", "p2-router"], ["wait", 300], ["ok", "p2-router", "→ model"], ["on", "p2-retriever"],
+    ["on", "p2-router"], ["branch", null], ["go", "p2-router", "p2-r-llm"], ["branch", "llm"], ["ok", "p2-router", "→ model"], ["on", "p2-retriever"],
     ["go", "p1-chroma", "p2-retriever"], ["ok", "p2-retriever", "5 chunks"], ["go", "p2-retriever", "p2-llm"], ["on", "p2-llm"],
     ["go", "p2-llm", "ollama"], ["on", "ollama", "generating"], ["wait", 800], ["go", "ollama", "p2-llm"], ["ok", "ollama", "qwen2.5:3b"],
     ["ok", "p2-llm", "answered"], ["go", "p2-llm", "p2-answer"], ["ok", "p2-answer", "5 sources"],
@@ -1556,16 +1640,17 @@ function billboard(className, x, y, z, ...children) {
   return card;
 }
 
-function addCube(world, id, color, x, z, side, height, title, sub) {
+function addCube(world, id, color, x, y, z, side, height, title, sub) {
   const body = make("div", "body", ...boxFaces(side, side, height));
   body.firstChild.append(el("span", GLYPHS[id], "glyph"));
   const stat = el("em");
   const cube = make("div", "cube", body, billboard("", side / 2, side / 2, height + 16, el("b", title), el("span", sub), stat));
   cube.style.setProperty("--base", color);
-  cube.style.transform = `translate3d(${x - side / 2}px, ${-side / 2}px, ${z}px)`;
+  cube.style.transform = `translate3d(${x - side / 2}px, ${y - side / 2}px, ${z}px)`;
   cube.dataset.cube = id;
   world.append(cube);
-  SCENE.cubes[id] = {x, y: 0, z, h: height, cube, stat, title};
+  SCENE.cubes[id] = {x, y, z, h: height, cube, stat, title};
+  return cube;
 }
 
 // The dino, row by row from the top: # skin, b belly, e eye, s back spike, . nothing. It faces +x, like the flow.
@@ -1597,7 +1682,7 @@ function addDino(world) {
     }
   });
   const holder = make("div", "dino-pos", dino);
-  holder.style.transform = "translate3d(640px, 150px, 0px)";
+  holder.style.transform = "translate3d(150px, 520px, 0px)"; // on the floor, in front of Part 1
   world.append(holder);
 }
 
@@ -1636,28 +1721,36 @@ function buildScene() {
   world.replaceChildren();
   SCENE.cubes = {};
   for (const [lane, z] of Object.entries(SCENE.levels)) {
+    const x0 = SCENE.cols[lane]; // each lane runs from the back (first step) to the front (last step)
     const plate = el("div", "", "plate");
     plate.style.setProperty("--base", PART_COLORS[lane]);
-    Object.assign(plate.style, {width: "1160px", height: "230px", transform: `translate3d(-600px, -115px, ${z}px)`});
+    Object.assign(plate.style, {width: "230px", height: "1160px", transform: `translate3d(${x0 - 115}px, -600px, ${z}px)`});
     world.append(plate);
     const status = badge("idle");
     status.dataset.laneStatus = lane;
-    const title = billboard("lane-title", -520, 0, z + 6, el("span", "PART " + lane.slice(1), "part"), el("b", LANES[lane].title), status);
+    const title = billboard("lane-title", x0, -530, z + 6, el("span", "PART " + lane.slice(1), "part"), el("b", LANES[lane].title), status);
     title.style.setProperty("--base", PART_COLORS[lane]);
     world.append(title);
     const [side, height] = SCENE.sizes[lane];
     const nodes = LANES[lane].nodes;
     nodes.forEach(([key, name, sub], index) => {
-      const x = -SCENE.spans[lane] / 2 + index * SCENE.spans[lane] / (nodes.length - 1);
-      addCube(world, `${lane}-${key}`, PART_COLORS[lane], x, z, side, height, name, sub);
+      const y = -SCENE.spans[lane] / 2 + index * SCENE.spans[lane] / (nodes.length - 1);
+      addCube(world, `${lane}-${key}`, PART_COLORS[lane], x0, y, z, side, height, name, sub);
       if (index > 0) addBeam(world, `${lane}-${nodes[index - 1][0]}`, `${lane}-${key}`, "lane", PART_COLORS[lane]);
     });
   }
+  // The Router's three branches, in front of it: two answered from the Index, one for the model.
+  const router = SCENE.cubes["p2-router"];
+  ROUTER_BRANCHES.forEach(([key, name], index) => {
+    addCube(world, `p2-r-${key}`, PART_COLORS.p2, router.x + 78, router.y + (index - 1) * 60, router.z, 32, 20, name, "").classList.add("mini");
+    addBeam(world, "p2-router", `p2-r-${key}`, "lane", PART_COLORS.p2);
+  });
+  // Ollama stands on its own pad on the ground floor, behind Part 1.
   const pad = el("div", "", "plate");
   pad.style.setProperty("--base", PART_COLORS.ollama);
-  Object.assign(pad.style, {width: "170px", height: "170px", transform: "translate3d(645px, -85px, 150px)"});
+  Object.assign(pad.style, {width: "180px", height: "180px", transform: "translate3d(-90px, -870px, 0px)"});
   world.append(pad);
-  addCube(world, "ollama", PART_COLORS.ollama, 730, 150, 100, 120, "Ollama", "separate container");
+  addCube(world, "ollama", PART_COLORS.ollama, 0, -780, 0, 100, 120, "Ollama", "one container · two models");
   addDino(world);
   addBeam(world, "p1-chroma", "p2-retriever", "cross", "", "hybrid search");
   addBeam(world, "p1-chroma", "p3-retriever", "cross", "", "top-k files");
@@ -1665,6 +1758,7 @@ function buildScene() {
   addBeam(world, "p2-llm", "ollama", "llm", "", "qwen2.5:3b");
   addBeam(world, "p3-coder", "ollama", "llm", "", "qwen2.5-coder:3b");
   syncCubesFromMap();
+  setRouterBranch(SCENE.branch);
   for (const lane of Object.keys(SCENE.levels)) {
     const status = document.querySelector(`#system-map [data-lane-status="${lane}"]`);
     if (status) setLaneStatus(lane, status.textContent, status.className.replace("badge", "").trim());
@@ -1700,7 +1794,7 @@ function flow3d(ids, ms = 480) {
     const point = anchor(id, SCENE.cubes[id].h / 2 + 14);
     return {transform: `translate3d(${point.x - 7}px, ${point.y - 7}px, ${point.z}px)`};
   });
-  const duration = ms * (ids.length - 1);
+  const duration = ms * (ids.length - 1) / SCENE.speed;
   packet.animate(frames, {duration, easing: "ease-in-out"}).onfinish = () => packet.remove();
   return duration;
 }
@@ -1708,11 +1802,11 @@ function flow3d(ids, ms = 480) {
 // ---- camera ----
 
 function renderCamera() {
-  const {rx, rz, zoom, x, z} = SCENE.cam;
+  const {rx, rz, zoom, x, y, z} = SCENE.cam;
   const world = document.getElementById("world");
   world.style.setProperty("--rx", rx + "deg");
   world.style.setProperty("--rz", rz + "deg");
-  world.style.transform = `scale(${zoom}) rotateX(${rx}deg) rotateZ(${rz}deg) translate3d(${-x}px, 0px, ${-z}px)`;
+  world.style.transform = `scale(${zoom}) rotateX(${rx}deg) rotateZ(${rz}deg) translate3d(${-x}px, ${-y}px, ${-z}px)`;
 }
 
 let cameraTween = null;
@@ -1736,6 +1830,17 @@ function sceneFrame(now) {
     renderCamera();
   }
   requestAnimationFrame(sceneFrame);
+}
+
+// The info card at the bottom left. Hidden or not is remembered in this browser.
+function setInfoVisible(on) {
+  document.getElementById("scene-wrap").classList.toggle("info-hidden", !on);
+  document.getElementById("scene-info-toggle").classList.toggle("on", on);
+  try { localStorage.setItem("ioc-scene-info", on ? "shown" : "hidden"); } catch (e) { /* private mode: not remembered */ }
+}
+
+function infoVisible() {
+  return !document.getElementById("scene-wrap").classList.contains("info-hidden");
 }
 
 function setOrbit(on) {
@@ -1765,17 +1870,25 @@ function setFocus(ids) {
   for (const [id, cube] of Object.entries(SCENE.cubes)) cube.cube.classList.toggle("focus", ids.includes(id));
 }
 
-function selectCube(id) {
+function selectCube(id, fly = true) {
   setFocus([id]);
   const [file, text] = EXPLAIN[id];
   showInfo(partName(id), SCENE.cubes[id].title, text, file);
+  const cube = SCENE.cubes[id];
+  if (fly) { // a click flies in; a Live result keeps the camera where the user left it
+    setOrbit(false);
+    moveCamera({x: cube.x + 90, y: cube.y, z: cube.z, zoom: 1.05, rx: 54, rz: SCENE.cam.rz}, 900); // the panel covers the right
+  }
+  openDetail(id);
 }
 
 function tourGo(index) {
   SCENE.step = clamp(index, 0, TOUR.length - 1);
   const step = TOUR[SCENE.step];
   setOrbit(false);
-  moveCamera(step.cam);
+  closeDetail();
+  const mean = (key) => step.focus.reduce((sum, id) => sum + SCENE.cubes[id][key], 0) / step.focus.length;
+  moveCamera(step.focus.length ? {...step.cam, x: mean("x"), y: mean("y"), z: mean("z")} : step.cam);
   setFocus(step.focus);
   const about = step.explain || step.focus[step.focus.length - 1];
   const [file, text] = step.text ? ["", step.text] : EXPLAIN[about];
@@ -1785,6 +1898,7 @@ function tourGo(index) {
 }
 
 function resetScene() {
+  closeDetail();
   SCENE.step = -1;
   document.getElementById("tour-count").textContent = "–";
   setFocus([]);
@@ -1798,18 +1912,255 @@ async function replay(name) {
   SCENE.step = -1;
   document.getElementById("tour-count").textContent = "–";
   setFocus([]);
+  closeDetail();
   for (const [action, ...args] of REPLAYS[name]) {
     if (run !== SCENE.run) return; // another replay started
     if (action === "info") showInfo("Replay", args[0], args[1]);
     else if (action === "reset") for (const [key] of LANES[args[0]].nodes) cube3d(`${args[0]}-${key}`, "", "");
     else if (action === "reset3") for (const id of args) cube3d(id, "", "");
-    else if (action === "wait") await sleep(args[0]);
+    else if (action === "wait") await sleep(args[0] / SCENE.speed);
+    else if (action === "branch") setRouterBranch(args[0]);
     else if (action === "go") await sleep(flow3d(args) + 80);
     else cube3d(args[0], {on: "active", ok: "ok", fail: "fail", skip: "skipped"}[action], args[1]);
   }
   if (name === "patch" || name === "rollback") dinoJump();
   await sleep(2500);
-  if (run === SCENE.run) syncCubesFromMap();
+  if (run === SCENE.run) {
+    syncCubesFromMap();
+    setRouterBranch(SCENE.branch);
+  }
+}
+
+// ---- the Router's three branches ----
+
+// [key, label, what it means]. The order is the order the Router tries them (p2/services/router.py).
+const ROUTER_BRANCHES = [
+  ["has", "has_function", "\"is there a function X?\" — looked up in the Index metadata, no model."],
+  ["file", "file_functions", "\"what functions are in core.py?\" — listed from the Index metadata, no model."],
+  ["llm", "→ LLM", "Any other question: hybrid search, then the instruct model answers from the Chunks."],
+];
+const BRANCH_KEY = {has_function: "has", file_functions: "file", llm: "llm"};
+
+// Which branch answered: the reply has no route field, but the two Index answers have fixed wording (p2/services/ask.py).
+function routerBranch(data) {
+  if (data.used_llm) return "llm";
+  if (/^(Yes\. "|No\. There is no function or method named)/.test(data.answer)) return "has_function";
+  if (/ defines \d+ functions?: |^I found no functions in a file named/.test(data.answer)) return "file_functions";
+  return "llm"; // "The Index is empty": it took the model's branch but had nothing to send
+}
+
+// branch: null clears the three cubes, "none" greys them (POST /context skips the Router), else lights the chosen one.
+function setRouterBranch(branch) {
+  SCENE.branch = branch;
+  for (const [key, label] of ROUTER_BRANCHES) {
+    const id = `p2-r-${key}`;
+    const chosen = branch && branch !== "none" && BRANCH_KEY[branch] === key;
+    cube3d(id, branch === null ? "" : chosen ? "ok" : "skipped", chosen ? "chosen" : "");
+    SCENE.cubes[id]?.cube.classList.toggle("chosen", Boolean(chosen));
+  }
+}
+
+// ---- live mode: a real request from inside the 3D View ----
+
+const LIVE_HINTS = {
+  ask: "a real question, e.g. what happens on division by zero?",
+  context: "a search query, e.g. division by zero",
+  patch: "an Intent, e.g. add a power function to Calculator",
+};
+
+async function runLive() {
+  const mode = document.getElementById("scene-live-mode").value;
+  const text = document.getElementById("scene-live-text").value.trim();
+  if (!text) return showInfo("Live", "Type something first", LIVE_HINTS[mode]);
+  const button = document.getElementById("scene-live-go");
+  button.disabled = true;
+  SCENE.run++; // stops a replay that is still playing
+  closeDetail();
+  setFocus([]);
+  // The camera stays where the user left it: a Live run lights the cubes up, it does not fly to them.
+  showInfo("Live", mode === "patch" ? "Running the Patch Loop…" : "Asking the real system…",
+           mode === "patch" ? "The coder model and the tests take a few minutes on CPU. Click any cube afterwards to see what it did."
+                            : "Click any cube when it is done to see what went through it.");
+  try {
+    if (mode === "patch") {
+      document.getElementById("intent").value = text;
+      await runPatchLoop();
+    } else {
+      document.getElementById("query").value = text;
+      await (mode === "ask" ? ask() : retrieve());
+    }
+  } finally {
+    button.disabled = false;
+  }
+  const failed = mode === "patch" ? SCENE.data.p3?.error : SCENE.data.p2?.error;
+  if (failed) return showInfo("Live", "Request failed", failed);
+  selectCube(mode === "patch" ? "p3-outcome" : "p2-answer", false);
+}
+
+// ---- inside a cube: the detail panel ----
+
+function closeDetail() {
+  SCENE.selected = null;
+  document.getElementById("scene-detail").hidden = true;
+  document.getElementById("scene-wrap").classList.remove("detail-open");
+}
+
+const sec = (title, ...children) => make("div", "sd-sec", el("h5", title), ...children);
+const para = (text, className = "") => el("p", text, className);
+const pre = (text) => el("pre", text);
+const nothingYet = (what) => para(`Nothing yet. Run ${what} with the Live box above (or on its tab), then click this cube again.`);
+
+function chunkLine(chunk) {
+  const where = `${chunk.path}:${chunk.start_line}-${chunk.end_line}`;
+  const scores = [chunk.similarity != null && `sim ${chunk.similarity.toFixed(3)}`, chunk.score != null && `rrf ${chunk.score.toFixed(4)}`]
+    .filter(Boolean).join(" · ");
+  return make("details", "", make("summary", "", el("span", where, "mono"), document.createTextNode(`  ${chunk.name || ""}  `),
+                                   el("span", scores, "muted")), pre(chunk.text ?? ""));
+}
+
+function chunkList(chunks) {
+  return chunks.length ? make("ul", "", ...chunks.map((chunk) => make("li", "", chunkLine(chunk)))) : para("No Chunks.");
+}
+
+// The prompt the instruct model got, rebuilt from the reply the way p2/services/ask.py builds it.
+// KNOWN SYMBOLS is made on the server from every symbol of these files, so only the files are named here.
+const ANSWER_RULES_COPY = `You answer questions about a small Python project, using ONLY the code below.
+Rules:
+- Use only the code shown. If the answer is not in the code, say you don't know.
+- Only mention functions, classes and methods from KNOWN SYMBOLS.
+  If something the user asks about is not in KNOWN SYMBOLS, say it does not exist.
+- Mention the file path when you refer to code.
+- Answer briefly.`;
+function answerPrompt(question, chunks) {
+  const files = [...new Set(chunks.map((c) => c.path))].join(", ");
+  const code = chunks.map((c) => `--- ${c.path} lines ${c.start_line}-${c.end_line} (${c.name}) ---\n${c.text}`).join("\n\n");
+  return `${ANSWER_RULES_COPY}\n\nKNOWN SYMBOLS:\n(every function, class and method of ${files})\n\nCODE:\n${code}\n\nQUESTION:\n${question}\n\nANSWER:`;
+}
+
+function attemptsOf(build) {
+  const p3 = SCENE.data.p3;
+  if (!p3) return [nothingYet("a Patch")];
+  if (p3.error) return [sec("Request", pre(p3.text)), sec("Error", pre(p3.error))];
+  if (!p3.data) return [para("The Patch Loop is still running…")];
+  return p3.data.attempts.map((attempt) => sec(`Attempt ${attempt.number} · ${attempt.ok ? "passed" : "failed"}`, ...build(attempt)));
+}
+
+async function fetchDetail(path, render) {
+  try {
+    return render(await api(path));
+  } catch (e) {
+    return [para("Could not load " + path + ": " + e.message)];
+  }
+}
+
+const DETAIL = {
+  "p1-codebase": () => fetchDetail("/files", (files) => [
+    sec(`${files.length} indexed files under target/`, make("ul", "", ...files.map((f) =>
+      make("li", "", el("span", f.path, "mono"), document.createTextNode(`  ${f.chunks} chunks`))))),
+  ]),
+  "p1-chunker": () => fetchDetail("/chunks?offset=0&limit=15", (page) => [
+    para(`${page.total} Chunks in the Index. The first ${page.items.length}:`),
+    chunkList(page.items.map((c) => ({...c, name: `${c.name} (${c.kind})`}))),
+  ]),
+  "p1-embedder": () => fetchDetail("/status", (s) => [
+    sec("Model", pre(`${s.embedding_model}\nruns inside the app container (ONNX), offline\nevery Chunk → a vector of 384 numbers`)),
+    sec("Vectors stored", pre(`${s.chunks}`)),
+  ]),
+  "p1-chroma": () => fetchDetail("/status", (s) => [sec("GET /status", pre(JSON.stringify(s, null, 2)))]),
+  "p1-watcher": () => [
+    para(WATCHER_NOTE),
+    SCENE.events.length ? sec("Latest events", make("ul", "", ...SCENE.events.slice(0, 20).map((e) => make("li", "",
+      badge(e.type, e.type === "deleted" ? "fail" : "ok"), el("span", ` ${e.path}`, "mono"),
+      document.createTextNode(`  ${e.chunks} chunks · ${new Date(e.time * 1000).toLocaleTimeString()}`)))))
+      : para("No events yet. Edit a file in target/ (or run make watch-demo) and watch this cube."),
+  ],
+  "p2-question": () => {
+    const p2 = SCENE.data.p2;
+    if (!p2) return [nothingYet("a question")];
+    return [sec(p2.kind === "ask" ? "POST /ask" : "POST /context", pre(p2.text)),
+            para(`k = ${p2.k} · sent at ${p2.at.toLocaleTimeString()}`)];
+  },
+  "p2-router": () => {
+    const p2 = SCENE.data.p2;
+    const rows = ROUTER_BRANCHES.map(([key, label, text]) => make("div", "branch" + (p2 && BRANCH_KEY[p2.branch] === key ? " on" : ""),
+      el("span", label, "mono"), el("span", text)));
+    const head = !p2 ? nothingYet("a question")
+      : p2.kind === "context" ? para("POST /context does not go through the Router: it only retrieves.")
+      : p2.error ? para("The request failed: " + p2.error)
+      : !p2.branch ? para("Waiting for the reply…")
+      : para(`"${p2.text}" took the ${p2.branch} branch.`);
+    return [head, sec("The three branches", make("div", "", ...rows))];
+  },
+  "p2-retriever": () => {
+    const p2 = SCENE.data.p2;
+    if (!p2?.data) return [p2?.error ? para(p2.error) : nothingYet("a question")];
+    if (p2.kind === "context") return [para(`Top ${p2.data.results.length} Chunks for "${p2.text}" (vector + BM25, fused by RRF):`), chunkList(p2.data.results)];
+    if (!p2.data.used_llm) return [para("Skipped: the Router answered from the Index. These are the Chunks the facts came from:"), chunkList(p2.data.sources)];
+    return [para(`Top ${p2.data.sources.length} Chunks sent to the model (vector + BM25, fused by RRF):`), chunkList(p2.data.sources)];
+  },
+  "p2-llm": () => {
+    const p2 = SCENE.data.p2;
+    if (!p2?.data) return [p2?.error ? para(p2.error) : nothingYet("a question")];
+    if (!p2.data.used_llm) return [para(p2.kind === "context" ? "Not asked: Retrieve returns the Chunks only." : "Not asked: the Router answered from the Index.")];
+    return [sec("Model", pre(answerModel + " via Ollama /api/generate")),
+            sec("What it received (the prompt)", pre(answerPrompt(p2.text, p2.data.sources))),
+            sec("What it answered", pre(p2.data.answer))];
+  },
+  "p2-answer": () => {
+    const p2 = SCENE.data.p2;
+    if (!p2?.data) return [p2?.error ? para(p2.error) : nothingYet("a question")];
+    if (p2.kind === "context") return [para("Retrieve returns sources only, no answer."), chunkList(p2.data.results)];
+    return [sec(p2.data.used_llm ? `Answer · ${answerModel}` : "Answer · from the Index, no LLM", pre(p2.data.answer)),
+            sec(`${p2.data.sources.length} sources`, chunkList(p2.data.sources))];
+  },
+  "p3-intent": () => {
+    const p3 = SCENE.data.p3;
+    if (!p3) return [nothingYet("a Patch")];
+    return [sec("POST /patch", pre(p3.text)), para(`k = ${p3.k} · at most ${p3.maxAttempts} attempts · sent at ${p3.at.toLocaleTimeString()}`)];
+  },
+  "p3-retriever": () => {
+    const p3 = SCENE.data.p3;
+    if (!p3?.data) return attemptsOf(() => []);
+    const files = p3.data.attempts.flatMap((a) => a.patch?.files ?? []).map((f) => f.path);
+    return [para(`The top ${p3.k} files for the Intent went into the coder's prompt in full. The reply does not list them; the files the model then chose to touch:`),
+            pre([...new Set(files)].join("\n") || "(none)")];
+  },
+  "p3-coder": () => attemptsOf((a) => a.generation?.ok
+    ? [para(a.patch.summary), make("ul", "", ...a.patch.files.map((f) => make("li", "", make("details", "",
+        make("summary", "", badge(f.op, OP_TONE[f.op] ?? ""), el("span", " " + f.path, "mono")), pre(f.content ?? "")))))]
+    : [para("No usable Patch: " + (a.generation?.error ?? a.error ?? "?"))]),
+  "p3-sanity": () => attemptsOf((a) => [para(!a.sanity ? "Not reached." : a.sanity.ok ? "Passed every rule." : "Refused: " + a.sanity.reason)]),
+  "p3-apply": () => attemptsOf((a) => [!a.apply ? para("Not reached: nothing was written.")
+    : a.apply.ok ? pre((a.apply.files ?? []).join("\n") || "(no files)") : para("Failed: " + a.apply.error)]),
+  "p3-validate": () => attemptsOf((a) => [!a.validation ? para("Not reached.") : pre(a.validation.log || (a.validation.ok ? "green" : "red"))]),
+  "p3-outcome": () => {
+    const p3 = SCENE.data.p3;
+    if (!p3?.data) return attemptsOf(() => []);
+    const ok = p3.data.status === "success";
+    return [sec(ok ? "Success" : "Failed", para(ok ? `Validated in ${p3.data.attempts.length} attempt(s), ${p3.seconds}s. The Watcher reindexes the changed files.`
+                                                   : `${p3.data.attempts.length} attempt(s), ${p3.seconds}s. target/ was rolled back byte for byte.`)),
+            ...p3.data.attempts.filter((a) => a.error).map((a) => sec(`Why attempt ${a.number} failed`, pre(a.error)))];
+  },
+  "ollama": () => fetchDetail("/status", (s) => [
+    para("One container serves both models. It loads the one a request names and unloads the other when memory is short."),
+    sec("Instruct model · Part 2", pre(s.answer_model)), sec("Coder model · Part 3", pre(s.patch_model)), sec("Host", pre(s.ollama_host)),
+  ]),
+};
+for (const [key] of ROUTER_BRANCHES) DETAIL[`p2-r-${key}`] = DETAIL["p2-router"];
+
+const WATCHER_NOTE = "A background thread (watchdog; polling when WATCH_POLLING=1) started after the first full index. " +
+  "Each create, change, delete or move reindexes only that file and is pushed to /events.";
+
+async function openDetail(id) {
+  SCENE.selected = id;
+  document.getElementById("sd-part").textContent = partName(id);
+  document.getElementById("sd-title").textContent = SCENE.cubes[id].title;
+  const body = document.getElementById("sd-body");
+  body.replaceChildren(para(EXPLAIN[id][1], "muted"), para("Loading…"));
+  document.getElementById("scene-detail").hidden = false;
+  document.getElementById("scene-wrap").classList.add("detail-open");
+  const parts = await DETAIL[id]();
+  if (SCENE.selected === id) body.replaceChildren(para(EXPLAIN[id][1], "muted"), ...parts);
 }
 
 function toggleFullscreen() {
@@ -1822,7 +2173,7 @@ function connectScene() {
   const wrap = document.getElementById("scene-wrap");
   let down = null;
   wrap.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".scene-bar, .scene-info, .scene-legend")) return;
+    if (e.target.closest(".scene-bar, .scene-info, .scene-legend, .scene-detail")) return;
     down = {x: e.clientX, y: e.clientY, moved: false, cube: e.target.closest(".cube"), dino: e.target.closest(".dino")};
     wrap.setPointerCapture(e.pointerId);
   });
@@ -1848,7 +2199,7 @@ function connectScene() {
       dinoJump();
       showInfo("Mascot", "Dino", "Made of the same cubes as everything else. It does no work, but it jumps every time a Patch passes the tests.");
     } else if (click && !down.moved) {
-      down.cube ? selectCube(down.cube.dataset.cube) : (setFocus([]), showDefaultInfo());
+      down.cube ? selectCube(down.cube.dataset.cube) : (setFocus([]), showDefaultInfo(), closeDetail());
     }
     down = null;
     SCENE.dragging = false;
@@ -1857,6 +2208,7 @@ function connectScene() {
   wrap.addEventListener("pointerup", () => release(true));
   wrap.addEventListener("pointercancel", () => release(false));
   wrap.addEventListener("wheel", (e) => {
+    if (e.target.closest(".scene-detail")) return; // scroll the panel, not the camera
     e.preventDefault();
     cameraTween = null;
     SCENE.cam.zoom = clamp(SCENE.cam.zoom * Math.exp(-e.deltaY * 0.0012), 0.3, 2.4);
@@ -1865,18 +2217,30 @@ function connectScene() {
   document.getElementById("tour-next").onclick = () => tourGo(SCENE.step + 1);
   document.getElementById("tour-prev").onclick = () => tourGo(SCENE.step - 1);
   document.getElementById("scene-orbit").onclick = () => setOrbit(!SCENE.orbit);
+  document.getElementById("scene-info-toggle").onclick = () => setInfoVisible(!infoVisible());
+  document.getElementById("si-close").onclick = () => setInfoVisible(false);
+  let savedInfo = null;
+  try { savedInfo = localStorage.getItem("ioc-scene-info"); } catch (e) { /* not available */ }
+  setInfoVisible(savedInfo !== "hidden");
   document.getElementById("scene-reset").onclick = resetScene;
   document.getElementById("scene-full").onclick = toggleFullscreen;
   for (const button of document.querySelectorAll("[data-replay]")) button.onclick = () => replay(button.dataset.replay);
+  document.getElementById("scene-speed").onchange = (e) => { SCENE.speed = Number(e.target.value) || 1; };
+  document.getElementById("sd-close").onclick = () => { closeDetail(); setFocus([]); };
+  document.getElementById("scene-live-form").onsubmit = (e) => { e.preventDefault(); runLive(); };
+  document.getElementById("scene-live-mode").onchange = (e) => {
+    document.getElementById("scene-live-text").placeholder = LIVE_HINTS[e.target.value];
+  };
 }
 
-// Keys on the 3D View: ← → walk the tour, F fullscreen, R reset, Space starts or stops the orbit.
+// Keys on the 3D View: ← → walk the tour, F fullscreen, R reset, I info card, Space starts or stops the orbit.
 function sceneKey(e) {
   if (document.getElementById("tab-scene").hidden) return false;
   if (e.key === "ArrowRight") tourGo(SCENE.step + 1);
   else if (e.key === "ArrowLeft") tourGo(SCENE.step - 1);
   else if (e.key === "f" || e.key === "F") toggleFullscreen();
   else if (e.key === "r" || e.key === "R") resetScene();
+  else if (e.key === "i" || e.key === "I") setInfoVisible(!infoVisible());
   else if (e.key === " ") setOrbit(!SCENE.orbit);
   else return false;
   e.preventDefault();

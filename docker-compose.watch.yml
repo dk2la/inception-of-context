@@ -1,0 +1,20 @@
+# Bonus: Docker log watch. Used only through `make up-watch` and `make crash`, never by `make up`.
+#   docker compose -f docker-compose.yml -f docker-compose.watch.yml ...
+services:
+  ioc:
+    volumes:
+      # The host's Docker socket, so `docker logs -f calculator` works from inside ioc.
+      # Whoever can use this socket controls the host's Docker, so it is opt-in.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # The Target Project running as its own container: the thing Docker log watch follows.
+  # The profile keeps it out of `up`; `make crash` runs it once, under the name "calculator".
+  calculator:
+    image: python:3.12-slim
+    profiles: ["demo"]
+    working_dir: /workspace
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ./target:/workspace:ro
+    command: ["python", "main.py", "2", "+", "3"]

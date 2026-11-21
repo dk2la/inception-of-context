@@ -54,7 +54,8 @@ Six tabs, keys `1`–`6`: Overview (System map, status, live Watcher events), Fi
 Patch Loop, and **3D View**. The 3D View shows the three parts as stacked levels, one cube per step; the cubes follow
 the live system. For a demo: **Tour** (or `←` `→`) walks through every step with an explanation and the file that does
 it, the **Replay** buttons play each flow (indexing, a symbol question, an LLM question, a green patch, a rollback)
-without waiting for the model, a click on a cube explains it, `F` is fullscreen and `R` resets the camera.
+without waiting for the model, a click on a cube explains it, `F` is fullscreen, `R` resets the camera and `I` (or **Info**, or the × on the card)
+hides the info card at the bottom left.
 It is plain CSS 3D: nothing is downloaded, it works offline.
 
 ## Other commands
@@ -88,6 +89,49 @@ curl -s localhost:8000/patch -H 'content-type: application/json' \
      -d '{"intent": "add a power function to Calculator", "k": 5, "max_attempts": 3}'
 ```
 
+### Live test cases (3D View)
+
+The **Live** bar of the 3D View sends a real request: pick a mode, type, Run. When it is done, click any cube to
+see what went through it. Expected results are for the original `target/` (restore it with `make restore`).
+
+**Retrieve** (`POST /context`, Part 2: search only, no model, a second at most)
+
+| Type | Expected | What it shows |
+|------|----------|---------------|
+| `division by zero` | `divide` in `calculator/core.py`, the `ZeroDivisionError` branch of `calculator/cli.py`, the division-by-zero tests | plain keyword and meaning match |
+| `how is the user input parsed` | `parse_expression` in `calculator/cli.py` first, although the code never says "parsed" | search by meaning (sim), not by words |
+| `what happens with a wrong operator` | `parse_expression` (`unknown operator`) and its test | a question in plain English finds the check |
+| `entry point of the program` | `main.py` near the top | a file with one Chunk is still found |
+| `logging` | k Chunks all the same, with low sim | Retrieve always returns k Chunks, even when nothing matches |
+
+`sim` is the similarity of meaning. Results are sorted by `rrf`, which merges the rank by meaning with the rank by
+keywords (BM25), so the order can differ from `sim`.
+
+**Ask** (`POST /ask`, Part 2: the same search, then an answer with its sources)
+
+| Type | Expected | What it shows |
+|------|----------|---------------|
+| `what functions are in core.py?` | exactly `add`, `subtract`, `multiply`, `divide`; the Instruct LLM cube says "not asked" | a symbol question is answered from the Index |
+| `is there a function power?` | no (yes after a Patch added it) | the same, for one name |
+| `какие функции есть в core.py?` | the same four | symbol questions work in Russian |
+| `what happens on division by zero?` | `divide` raises `ZeroDivisionError`; the CLI prints `error: division by zero` and returns 1; sources point at both files | the model answers from the Chunks it was given |
+| `how do I run the calculator?` | `python main.py 2 + 3`, from `README.md` | non-code files are indexed too |
+| `does the calculator support square roots?` | no, with the operators it does support | the model should not invent code that is not there |
+
+**Patch** (`POST /patch`, Part 3: it writes `target/` when green, a few minutes on CPU)
+
+| Type | Expected | What it shows |
+|------|----------|---------------|
+| `add a power function to Calculator` | success, usually on attempt 1; `power` in `core.py`, a new test file | the green path: generate, Sanity Checks, apply, validate |
+| `make add return the difference instead of the sum` | the existing tests fail, every Attempt is rolled back, status failed, `core.py` unchanged | the Rollback: a Patch that breaks the tests never stays |
+| `delete all the tests` | refused by the Sanity Checks (`the Patch may not delete the test file ...`) before anything is written | hard rules run before the disk is touched |
+| `change ioc.config.yml so that validation is only echo ok` | refused: `the Patch may not change ioc.config.yml` | a Patch cannot switch off its own judge |
+
+The model decides what it writes, so a refusal case can also end as a failed Attempt for another reason; the
+point is that nothing it writes survives unless the Sanity Checks and the Validation Command both pass.
+
+After each Patch: `make restore` puts `target/` back, and the Watcher reindexes it.
+
 ## Running each part alone
 
 ```
@@ -108,11 +152,31 @@ first, so that only one process writes to the Index).
 | Route | What it does |
 |-------|----------------|
 | `POST /bonus/reindex` | full reindex on demand |
-| `POST /bonus/patch` | the Patch Loop, plus `dry_run` (a diff, nothing written) and `git_commit` (one line from the model after a green validation) |
+| `POST /bonus/patch` | the Patch Loop, plus `dry_run` (a diff, nothing written), `pull_request` (see below) and `git_commit` (one line from the model after a green validation) |
+| `GET /bonus/pulls` | the pull requests, newest first |
+| `POST /bonus/pulls/{n}/merge` | apply exactly that Patch, validate it again, optionally commit (`{"git_commit": true}`) |
+| `POST /bonus/pulls/{n}/close` | drop the pull request; nothing is written |
 | `GET /bonus/events` | live attempt and validation status, Server-Sent Events |
 | `POST /bonus/docker/watch` | follow a container's logs and run one Patch Loop when a traceback shows up |
 
 The dashboard gains a Reindex button, Dry run and Git commit checkboxes, the diff, and the live validation feed. Git commit only works when the Target Project is inside a git repository. Docker watch needs the `docker` command.
+
+**Pull request mode.** With `"pull_request": true` the Patch Loop runs as usual (Sanity Checks, Validation Command,
+up to three Attempts), but a green Patch is rolled back instead of kept and opened as pull request #n: title, Intent,
+checks, files changed. Merge applies exactly that Patch (the model is not asked again), runs the Validation Command
+again and rolls back if it fails. If a file it touches changed since the pull request was opened, Merge refuses
+with a conflict. Close drops it. Pull requests live in memory: a restart forgets them. With the toggle off, nothing
+changes. On the dashboard it is the "pull request (review, then merge)" toggle and the Pull requests card.
+
+**Docker log watch.** The server runs in a container, so it needs the Docker CLI (in the image) and the host's
+Docker socket. The socket is opt-in, because whoever can use it controls the host's Docker:
+
+```
+make up-watch     # make up, plus /var/run/docker.sock (docker-compose.watch.yml)
+make crash        # runs target/ as container "calculator"; power(10, 400.0) raises OverflowError
+```
+
+Then in the Bonus tab, Docker log watch: container `calculator`, Watch. The Traceback starts one Patch Loop.
 
 ## Configuration
 
@@ -182,8 +246,8 @@ p3/            Part 3, Patch Loop
   views/         /patch
   app.py         the Part 2 app plus /patch
 bonus/         optional Chapter VII bonuses; this is the app `make up` serves
-  services/      reindex, dry-run diff, git commit, docker log watch
-  views/         /bonus/reindex /bonus/patch /bonus/events /bonus/docker/watch /bonus/bonus.js
+  services/      reindex, dry-run diff, pull request, git commit, docker log watch
+  views/         /bonus/reindex /bonus/patch /bonus/pulls /bonus/events /bonus/docker/watch /bonus/bonus.js
   app.py         the Part 3 routes plus the bonus routes
 tests/         tests of every part; tests/test_layers.py checks the layer rules
 

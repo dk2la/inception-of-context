@@ -8,11 +8,12 @@ from p3.services.sanity import sanity_service
 from bonus.repositories.event_repository import bonus_event_repository
 from bonus.services.diff import diff_service
 from bonus.services.git_commit import git_commit_service
+from bonus.services.pull_request import pull_request_service
 
 
 class PatchBonusService:
     def __init__(self, settings, llm_client, file_repository, patch_loop_service, sanity_service,
-                 attempt_factory, diff_service, git_commit_service, events):
+                 attempt_factory, diff_service, git_commit_service, events, pull_request_service):
         # debug: dry_run calls qwen2.5-coder:3b once. A real run calls patch_loop_service.run_attempt.
         # events is bonus_event_repository. The dashboard reads those events from GET /bonus/events.
         self.settings = settings
@@ -24,6 +25,7 @@ class PatchBonusService:
         self.diff_service = diff_service
         self.git_commit_service = git_commit_service
         self.events = events
+        self.pull_request_service = pull_request_service
 
     def read(self, path):
         """The current text of one Target Project file, or "" when it does not exist."""
@@ -121,8 +123,11 @@ class PatchBonusService:
         self.events.add("dry_run", {"files": [item["path"] for item in diffs]})
         return self.reply("dry_run", [attempt], patch, diffs, None, True)
 
-    def run(self, intent, k=5, max_attempts=3, dry_run=False, git_commit=True):
+    def run(self, intent, k=5, max_attempts=3, dry_run=False, git_commit=True, pull_request=False):
         """Dry-run, or the real loop. A green Patch can be committed. Events go out as each Attempt ends."""
+        # pull_request True: the same loop, but a green Patch is rolled back and opened as a pull request.
+        #   status == "open", return["pull"]["number"] == 1, the disk is unchanged, git stays None.
+        #   POST /bonus/pulls/1/merge then applies exactly that Patch.
         # debug: POST /bonus/patch {"intent": "add a power function to Calculator", "k": 5,
         #   "max_attempts": 3, "dry_run": false, "git_commit": true}
         # the same non-reentrant patch_lock is held here, so this method calls run_attempt, not run_patch_loop
@@ -131,7 +136,7 @@ class PatchBonusService:
         # three failures: status == "failed", patch is None, diffs == [], git stays None
         # max_attempts 0 or 99 is clamped to 1..3
         with self.patch_loop_service.patch_lock:
-            self.events.add("started", {"intent": intent, "dry_run": dry_run})
+            self.events.add("started", {"intent": intent, "dry_run": dry_run, "pull_request": pull_request})
             if dry_run:
                 result = self.dry_run(intent, k)
                 self.events.add("finished", {"status": result["status"]})
@@ -142,7 +147,10 @@ class PatchBonusService:
             limit = max(1, min(self.settings.MAX_ATTEMPTS, max_attempts))
             for number in range(1, limit + 1):
                 self.events.add("attempt_started", {"number": number, "step": "validation"})
-                attempt = self.patch_loop_service.run_attempt(intent, k, previous, number)
+                if pull_request:
+                    attempt = self.patch_loop_service.run_attempt(intent, k, previous, number, keep=False)
+                else:
+                    attempt = self.patch_loop_service.run_attempt(intent, k, previous, number)
                 attempts.append(attempt)
                 self.note_attempt(attempt)
                 if attempt["ok"]:
@@ -152,6 +160,11 @@ class PatchBonusService:
             patch = attempts[-1]["patch"] if success else None
             diffs = self.diffs_from_snapshot(saved, patch) if patch else []
             git = None
+            if success and pull_request:
+                result = self.reply("open", attempts, patch, diffs, None, False)
+                result["pull"] = self.pull_request_service.open(intent, patch, attempts, diffs)
+                self.events.add("finished", {"status": "open"})
+                return result
             if success and git_commit:
                 git = self.git_commit_service.commit_patch(patch)
                 self.events.add("git", git)
@@ -162,4 +175,4 @@ class PatchBonusService:
 
 patch_bonus_service = PatchBonusService(
     settings, llm_client, file_repository, patch_loop_service, sanity_service,
-    attempt_factory, diff_service, git_commit_service, bonus_event_repository)
+    attempt_factory, diff_service, git_commit_service, bonus_event_repository, pull_request_service)

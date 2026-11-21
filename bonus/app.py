@@ -10,6 +10,7 @@ from p3.app import app as mandatory
 from bonus.views.docker_watch import docker_watch_view
 from bonus.views.events import bonus_events_view
 from bonus.views.patch import bonus_patch_view
+from bonus.views.pulls import pulls_view
 from bonus.views.reindex import reindex_view
 from bonus.views.static_files import bonus_static_view
 
@@ -24,12 +25,14 @@ class BonusApp:
         # debug: mandatory is the p3 app. Its routes (POST /ask, POST /patch, GET /) are copied here.
         # lifespan still starts the indexer and the watcher. Then the bonus routes are added:
         # POST /bonus/reindex, POST /bonus/patch, GET /bonus/events,
+        # GET /bonus/pulls, POST /bonus/pulls/{number}/merge, POST /bonus/pulls/{number}/close,
         # POST /bonus/docker/watch, POST /bonus/docker/stop, GET /bonus/bonus.js.
         self.app = FastAPI(title="Inception-of-Context", lifespan=mandatory.router.lifespan_context)
         for route in mandatory.routes:
             self.app.router.routes.append(route)
         error_handlers.add_error_handlers(self.app)
-        for view in (reindex_view, bonus_patch_view, bonus_events_view, docker_watch_view, bonus_static_view):
+        for view in (reindex_view, bonus_patch_view, pulls_view, bonus_events_view, docker_watch_view,
+                     bonus_static_view):
             self.app.include_router(view.router)
         self.app.middleware("http")(self.inject_script)
 
