@@ -107,7 +107,7 @@ The **Index** lives in `/data/chroma`, outside the **Target Project**, so the **
 
 A route that needs the model answers `503` with the reason when Ollama cannot be reached.
 
-**Retrieval** (`p2/services/search.py`): rank the whole **Index** twice (vector similarity from Chroma and BM25 over the Chroma documents), then merge with Reciprocal Rank Fusion: `score = 1/(60 + vector_rank) + 1/(60 + bm25_rank)`. Chroma stays the canonical store; the BM25 index is rebuilt from it whenever the **Index** changes.
+**Retrieval** (`p2/services/search.py`): rank the whole **Index** twice (vector similarity from Chroma and BM25 over the Chroma documents), then merge with Reciprocal Rank Fusion: `score = 1/(60 + vector_rank) + 0.5/(60 + bm25_rank)`; BM25 ranks only the Chunks that share a term with the query (stop words removed, a small suffix stemmer). Chroma stays the canonical store; the BM25 index is rebuilt from it whenever the **Index** changes.
 
 **Answering** (`p2/services/ask.py`), single-turn, no conversation history:
 1. Regex router (English and Russian phrasing): "is there a function X?" and "what functions are in file Y?" are answered straight from **Index** metadata, without calling the LLM ([ADR-0004](./adr/0004-symbol-questions-skip-the-llm.md)).

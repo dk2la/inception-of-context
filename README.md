@@ -123,7 +123,9 @@ see what went through it. Expected results are for the original `target/` (resto
 | `logging` | k Chunks all the same, with low sim | Retrieve always returns k Chunks, even when nothing matches |
 
 `sim` is the similarity of meaning. Results are sorted by `rrf`, which merges the rank by meaning with the rank by
-keywords (BM25), so the order can differ from `sim`.
+keywords (BM25), so the order can differ from `sim`: `rrf = 1/(60 + rank by meaning) + 0.5/(60 + rank by keywords)`.
+BM25 only ranks the Chunks that share a word with the question, ignores words like "the", "function" or "that",
+and cuts endings ("adds" finds `add`); it counts half, so the tests that repeat a name do not push out the function.
 
 **Ask** (`POST /ask`, Part 2: the same search, then an answer with its sources)
 

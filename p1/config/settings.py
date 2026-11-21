@@ -29,6 +29,9 @@ class Settings:
 
         # Retrieval
         self.RRF_K = 60  # the usual constant: a Chunk far down one list still gets a little from it
+        # BM25 counts half as much as meaning in the fusion: keyword matches in the tests (test_divide, test_add)
+        # would otherwise push the function itself out of the top k for a plain-English question.
+        self.BM25_WEIGHT = 0.5
 
         # Patch Loop
         self.VALIDATION_CONFIG = "ioc.config.yml"  # the Target Project's file that holds the Validation Command

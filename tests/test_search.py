@@ -98,10 +98,41 @@ def test_bm25_search_ranks_the_exact_name_first(temp_index):
     assert name_of(ids[0]) == "divide_by_zero_message"
 
 
-def test_bm25_search_returns_every_chunk_even_without_shared_words(temp_index):
+def test_bm25_search_ranks_only_the_chunks_that_share_a_term(temp_index):
     indexer_service.reindex_file(write(temp_index, "math.py", THREE))
-    assert len(search_service.bm25_search("divide by zero")) == chroma_db.get_collection().count()
-    assert len(search_service.bm25_search("banana")) == chroma_db.get_collection().count()
+    assert [name_of(i) for i in search_service.bm25_search("divide by zero")] == ["divide_by_zero_message"]
+    assert search_service.bm25_search("banana") == []
+
+
+def test_bm25_search_ignores_a_query_of_stop_words_only(temp_index):
+    indexer_service.reindex_file(write(temp_index, "math.py", THREE))
+    assert search_service.bm25_search("is there the function that") == []
+
+
+def test_bm25_search_finds_a_name_through_its_inflected_form(temp_index):
+    indexer_service.reindex_file(write(temp_index, "math.py", THREE))
+    assert name_of(search_service.bm25_search("the function that adds")[0]) == "add"
+    assert name_of(search_service.bm25_search("greeting someone")[0]) == "greet"
+
+
+def test_a_term_in_every_chunk_still_counts_as_a_match(temp_index):
+    # BM25Okapi scores a term found in every document at about 0; the Chunk shares the term, so it stays ranked
+    indexer_service.reindex_file(write(temp_index, "math.py", THREE))
+    assert len(search_service.bm25_search("return")) == chroma_db.get_collection().count()
+
+
+@pytest.mark.parametrize("word, stem", [
+    ("adds", "add"), ("add", "add"), ("greets", "greet"), ("greeting", "greet"), ("greeted", "greet"),
+    ("divides", "divid"), ("divide", "divid"), ("numbers", "number"), ("queries", "query"), ("class", "class"),
+    ("is", "is"), ("sing", "sing"), ("bed", "bed"),
+])
+def test_stem_cuts_common_endings_the_same_way_everywhere(word, stem):
+    assert search_service.stem(word) == stem
+
+
+def test_terms_drop_stop_words_and_stem_the_rest():
+    assert search_service.terms("the function that adds two numbers") == ["add", "two", "number"]
+    assert search_service.terms("def divide_by_zero():") == ["def", "divid", "zero"]
 
 
 def test_bm25_search_on_an_empty_index_returns_nothing(temp_index):
@@ -143,10 +174,10 @@ def test_bm25_sees_a_function_added_to_a_file(temp_index):
 def test_bm25_forgets_the_chunks_of_a_deleted_file(temp_index):
     path = write(temp_index, "math.py", THREE)
     indexer_service.reindex_file(path)
-    old_ids = search_service.bm25_search("anything")
+    old_ids = search_service.bm25_search("return")
     os.remove(path)
     indexer_service.reindex_file(path)
-    assert search_service.bm25_search("anything") == []
+    assert search_service.bm25_search("return") == []
     assert old_ids  # the Chunks were there before the delete
 
 
@@ -179,6 +210,11 @@ def test_rrf_second_in_one_list_and_first_in_the_other_beats_first_and_last():
 
 def test_rrf_an_id_missing_from_one_list_gets_points_from_the_other_only():
     assert search_service.rrf_merge(["a", "b"], ["a"])["b"] == pytest.approx(1 / 62)
+
+
+def test_rrf_weight_scales_only_the_second_list():
+    scores = search_service.rrf_merge(["a"], ["b"], 0.5)
+    assert scores == {"a": 1 / 61, "b": 0.5 / 61}
 
 
 def test_rrf_of_nothing_is_nothing():
