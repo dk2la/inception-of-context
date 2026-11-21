@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.coverage
+.coverage.*
 venv/
 .venv/
 
@@ -12,7 +14,8 @@ chroma_data/
 # Models
 *.onnx
 ollama_models/
-models/
+# only the root folder: p1/models/, p2/models/, p3/models/ are code
+/models/
 
 # Patch Loop: temporary files written while a Patch is applied
 *.ioc.tmp
@@ -22,5 +25,4 @@ models/
 .idea/
 .vscode/
 
-# Claude Code worktrees
-.claude/worktrees/
+.school.env

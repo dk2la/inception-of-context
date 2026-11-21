@@ -3,8 +3,9 @@ import shutil
 
 import pytest
 
-from p3 import sanity
-from p3.sanity import check_patch
+import p3.services.sanity as sanity_module
+
+from p3.services.sanity import sanity_service
 
 
 # --- helpers ---
@@ -34,7 +35,7 @@ def run(project):
     def run(patch):
         work = os.path.dirname(project)
         before = listing(work)
-        reason = check_patch(patch, project)
+        reason = sanity_service.check_patch(patch, project)
         assert listing(work) == before
         return reason
     return run
@@ -71,7 +72,7 @@ def test_the_runner_returns_the_first_reason_and_stops_there(run, monkeypatch):
             return answer
         return the_rule
 
-    monkeypatch.setattr(sanity, "RULES", [rule(None), rule("second"), rule("third")])
+    monkeypatch.setattr(sanity_service, "rules", [rule(None), rule("second"), rule("third")])
     assert run(patch_of(create("a.py"))) == "second"
     assert calls == [None, "second"]
 
@@ -110,7 +111,7 @@ def test_a_path_that_only_contains_dots_in_a_name_is_allowed(run):
 ])
 def test_the_config_file_is_never_touched_in_any_spelling(project, entry):
     # Called directly, because 'calculator/../' would be refused earlier by outside_target.
-    reason = sanity.touches_config(patch_of(entry), project)
+    reason = sanity_service.touches_config(patch_of(entry), project)
     assert "ioc.config.yml" in reason and "Validation Command" in reason
 
 
@@ -151,7 +152,7 @@ def test_every_operation_counts_towards_the_limit(run):
 
 
 def test_too_many_files_can_be_called_directly(project):
-    assert isinstance(sanity.too_many_files(patch_of(*files_named(4)), project), str)
+    assert isinstance(sanity_service.too_many_files(patch_of(*files_named(4)), project), str)
 
 
 def test_the_path_rule_runs_before_the_count(run):
@@ -189,7 +190,7 @@ def test_create_of_an_existing_file_is_refused_even_spelled_with_a_dot(run):
 
 def test_modify_and_delete_of_an_existing_file_are_ignored_by_this_rule(project):
     write(project, "a.py", "x = 1\n")
-    assert sanity.creates_existing(patch_of(modify("a.py"), delete("a.py")), project) is None
+    assert sanity_service.creates_existing(patch_of(modify("a.py"), delete("a.py")), project) is None
 
 
 # --- empties_file (#96) ---
@@ -235,7 +236,7 @@ def test_a_new_empty_file_may_be_created(run):
 
 
 def test_modify_of_a_missing_file_is_not_this_rules_problem(project):
-    assert sanity.empties_file(patch_of(modify("missing.py", "")), project) is None
+    assert sanity_service.empties_file(patch_of(modify("missing.py", "")), project) is None
 
 
 # --- shrinks_too_much (#97) ---
@@ -264,8 +265,8 @@ def test_only_the_part_that_changed_is_a_typical_shrink(run):
 def test_create_delete_empty_and_missing_old_files_are_ignored(project, hundred):
     write(project, "empty.py", "")
     patch = patch_of(modify("empty.py", "y"), modify("missing.py", "y"), delete("a.py"))
-    assert sanity.shrinks_too_much(patch, project) is None
-    assert sanity.shrinks_too_much(patch_of(create("a.py", "y")), project) is None
+    assert sanity_service.shrinks_too_much(patch, project) is None
+    assert sanity_service.shrinks_too_much(patch_of(create("a.py", "y")), project) is None
 
 
 def test_a_file_replaced_by_nothing_gets_the_more_specific_empty_reason(hundred, run):
@@ -358,7 +359,7 @@ def test_content_that_mentions_files_without_the_marker_is_allowed(run):
 
 
 def test_the_marker_is_defined_once_in_the_sanity_module():
-    assert sanity.MARKER == "=== FILE:"
+    assert sanity_module.MARKER == "=== FILE:"
 
 
 def test_the_marker_reason_wins_over_the_size_and_stub_reasons(project, run):
@@ -384,3 +385,55 @@ def test_ioc_config_in_other_letter_case_is_still_the_config_file(run):
     # on a case-insensitive disk (macOS bind mount) these names are the same file
     for path in ["IOC.config.yml", "./Ioc.Config.YML"]:
         assert "ioc.config.yml" in run(patch_of(modify(path, "validate: true\n")))
+
+
+# --- weakens_tests ---
+
+TEST_CORE = "tests/test_core.py"
+
+
+def read_test_core(project):
+    with open(os.path.join(project, TEST_CORE)) as f:
+        return f.read()
+
+
+def test_deleting_a_test_file_is_refused(run):
+    reason = run({"summary": "", "files": [{"path": TEST_CORE, "op": "delete", "content": ""}]})
+    assert reason == f"the Patch may not delete the test file {TEST_CORE}"
+
+
+def test_removing_a_test_is_refused(run, project):
+    content = read_test_core(project).replace("def test_add_negative():", "def helper_add_negative():")
+    reason = run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]})
+    assert reason == f"the Patch removes the test test_add_negative from {TEST_CORE}"
+
+
+def test_changing_what_a_test_checks_is_refused(run, project):
+    content = read_test_core(project).replace("assert Calculator().add(2, 3) == 5.0", "assert True")
+    reason = run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]})
+    assert reason == f"the Patch changes the test test_add in {TEST_CORE} (add new tests instead)"
+
+
+def test_adding_a_test_and_changing_comments_is_allowed(run, project):
+    content = ("# tests of Calculator\n" + read_test_core(project)
+               + "\n\ndef test_power():\n    assert Calculator().power(2, 3) == 8.0\n")
+    assert run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]}) is None
+
+
+def test_creating_a_new_test_file_is_allowed(run):
+    content = ("from calculator.core import Calculator\n\n\n"
+               "def test_power():\n    assert Calculator().power(2, 3) == 8.0\n")
+    assert run({"summary": "", "files": [{"path": "tests/test_power.py", "op": "create", "content": content}]}) is None
+
+
+@pytest.mark.parametrize("path, expected", [
+    ("tests/test_core.py", True), ("core_test.py", True), ("calculator/core.py", False),
+    ("tests/conftest.py", False), ("test_notes.md", False),
+])
+def test_is_test_file(path, expected):
+    assert sanity_service.is_test_file(path) is expected
+
+
+def test_a_test_file_that_does_not_parse_is_left_to_the_validation_command(run, project):
+    content = read_test_core(project) + "\ndef test_broken(:\n"
+    assert run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]}) is None

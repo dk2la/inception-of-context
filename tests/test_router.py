@@ -1,6 +1,6 @@
 import pytest
 
-from p2.ask import route_question
+from p2.services.router import router_service
 
 
 # --- "is there a function X?" ---
@@ -19,7 +19,7 @@ from p2.ask import route_question
     ("Is there a method Calculator.divide?", "Calculator.divide"),
 ])
 def test_is_there_a_function_is_recognised(question, name):
-    assert route_question(question) == ("has_function", name)
+    assert router_service.route_question(question) == ("has_function", name)
 
 
 @pytest.mark.parametrize("question, name", [
@@ -29,7 +29,7 @@ def test_is_there_a_function_is_recognised(question, name):
     ("Does any function power exist in the project?", "power"),
 ])
 def test_does_a_function_exist_is_recognised(question, name):
-    assert route_question(question) == ("has_function", name)
+    assert router_service.route_question(question) == ("has_function", name)
 
 
 @pytest.mark.parametrize("question", [
@@ -47,7 +47,7 @@ def test_does_a_function_exist_is_recognised(question, name):
     "Does divide exist?",
 ])
 def test_other_questions_are_left_to_the_model(question):
-    assert route_question(question) is None
+    assert router_service.route_question(question) is None
 
 
 # --- "what functions are in file Y?" ---
@@ -67,7 +67,7 @@ def test_other_questions_are_left_to_the_model(question):
     ("What functions are in my-tests/test_core.py?", "my-tests/test_core.py"),
 ])
 def test_what_functions_are_in_a_file_is_recognised(question, filename):
-    assert route_question(question) == ("file_functions", filename)
+    assert router_service.route_question(question) == ("file_functions", filename)
 
 
 @pytest.mark.parametrize("question", [
@@ -81,12 +81,12 @@ def test_what_functions_are_in_a_file_is_recognised(question, filename):
     "Which functions call divide in core.py?",
 ])
 def test_other_questions_about_a_file_are_left_to_the_model(question):
-    assert route_question(question) is None
+    assert router_service.route_question(question) is None
 
 
 def test_the_two_kinds_of_question_do_not_get_mixed_up():
-    assert route_question("Is there a function power?") == ("has_function", "power")
-    assert route_question("Is there a function in core.py?") is None
+    assert router_service.route_question("Is there a function power?") == ("has_function", "power")
+    assert router_service.route_question("Is there a function in core.py?") is None
 
 
 # --- the same questions in Russian ---
@@ -108,7 +108,7 @@ def test_the_two_kinds_of_question_do_not_get_mixed_up():
     ("Есть ли в файле core.py функция divide?", "divide"),
 ])
 def test_russian_is_there_a_function_is_recognised(question, name):
-    assert route_question(question) == ("has_function", name)
+    assert router_service.route_question(question) == ("has_function", name)
 
 
 @pytest.mark.parametrize("question, filename", [
@@ -125,7 +125,7 @@ def test_russian_is_there_a_function_is_recognised(question, name):
     ("КАКИЕ ФУНКЦИИ В Core.py?", "Core.py"),
 ])
 def test_russian_what_functions_are_in_a_file_is_recognised(question, filename):
-    assert route_question(question) == ("file_functions", filename)
+    assert router_service.route_question(question) == ("file_functions", filename)
 
 
 @pytest.mark.parametrize("question", [
@@ -141,4 +141,4 @@ def test_russian_what_functions_are_in_a_file_is_recognised(question, filename):
     "Что делает функция в cli.py?",
 ])
 def test_other_russian_questions_are_left_to_the_model(question):
-    assert route_question(question) is None
+    assert router_service.route_question(question) is None

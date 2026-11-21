@@ -1,0 +1,14 @@
+# python -m coverage run -m pytest && python -m coverage report   (see `make test`)
+[run]
+branch = True
+source = p1, p2, p3, bonus
+# runs inside the demo container (make crash), not in the server
+omit = bonus/demo/*
+
+[report]
+fail_under = 100
+show_missing = True
+skip_covered = True
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
