@@ -53,11 +53,20 @@
   .pr-section { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
   .pr-merge { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; border-top: 1px solid var(--border); }
   .pr-merge .note { flex: 1; min-width: 160px; font-size: 12.5px; color: var(--text-dim); }
-  #bonus-pulls { list-style: none; margin: 0; padding: 0; }
-  #bonus-pulls li { display: flex; align-items: center; gap: 10px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
-  #bonus-pulls li + li { border-top: 1px solid var(--border); }
-  #bonus-pulls li:hover { background: var(--bg-sunken); }
-  #bonus-pulls .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #bonus-pulls { display: grid; }
+  #bonus-pulls .pr-group { padding: 10px 16px 6px; font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase;
+                           color: var(--text-faint); border-top: 1px solid var(--border); }
+  #bonus-pulls .pr-group:first-child { border-top: 0; }
+  .pr-item { border-top: 1px solid var(--border); }
+  .pr-item > summary { display: flex; align-items: center; gap: 10px; padding: 9px 16px; font-size: 13px; cursor: pointer; list-style: none; }
+  .pr-item > summary::-webkit-details-marker { display: none; }
+  .pr-item > summary::before { content: "▸"; color: var(--text-faint); transition: transform .15s; }
+  .pr-item[open] > summary::before { transform: rotate(90deg); }
+  .pr-item > summary:hover { background: var(--bg-sunken); }
+  .pr-item .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pr-item .stat-add { color: var(--ok); font: 12px var(--mono); } .pr-item .stat-del { color: var(--fail); font: 12px var(--mono); }
+  .pr-item .when { color: var(--text-faint); font-size: 12px; white-space: nowrap; }
+  .pr-item > .pr { margin: 0 16px 14px; }
   `;
   document.head.append(style);
 
@@ -136,6 +145,8 @@
   const pullEmpty = el("div", "No pull requests yet. Turn on \u201cpull request\u201d and run a bonus patch.", "empty");
   const pullsCard = make("div", "panel bonus-card",
     make("div", "panel-head", el("h3", "Pull requests"), el("span", "GET /bonus/pulls", "bonus-chip")), pullList, pullEmpty);
+  const expandedPulls = new Set(); // the pull requests whose diff is open; kept across reloads of the list
+  const pullNotes = {}; // the last message of a Merge or Close, shown under that pull request
 
   // Docker watch
   const service = Object.assign(document.createElement("input"), {type: "text", id: "bonus-service", placeholder: "container name",
@@ -196,8 +207,8 @@
   const section = make("section", "tab",
     make("div", "page-head", make("div", "", el("h2", "Bonus"),
       el("p", "Chapter VII extras, served only by bonus.app. The mandatory tabs are unchanged."))),
-    make("div", "bonus-grid", make("div", "bonus-col", patchCard, compareCard),
-      make("div", "bonus-col", pullsCard, liveCard, reindexCard, dockerCard)));
+    make("div", "bonus-grid", make("div", "bonus-col", patchCard, pullsCard, compareCard),
+      make("div", "bonus-col", liveCard, reindexCard, dockerCard)));
   section.id = "tab-bonus";
   section.setAttribute("role", "tabpanel");
   section.hidden = true;
@@ -280,7 +291,7 @@
   const PR_TONE = {open: "accent", merged: "ok", closed: ""};
 
   // One pull request, drawn like a code-review page: title, checks, files changed, then Merge / Close.
-  function renderPull(container, pull, note) {
+  function pullBox(pull, note) {
     const head = make("div", "pr-head", badge(pull.state, PR_TONE[pull.state]),
       make("h4", "", el("span", "#" + pull.number + " ", "num"), pull.title));
     const checks = make("div", "pr-checks",
@@ -309,12 +320,39 @@
       box.append(footer);
     } else if (pull.state === "merged") {
       const gitInfo = pull.merge && pull.merge.git;
-      box.append(make("div", "pr-merge", el("span", gitInfo ? (gitInfo.ok ? "Merged and committed: " + gitInfo.message :
-        "Merged; commit skipped: " + gitInfo.error) : "Merged, not committed.", "note")));
+      const when = pull.merge && pull.merge.at ? " · " + new Date(pull.merge.at * 1000).toLocaleString() : "";
+      box.append(make("div", "pr-merge", el("span", (gitInfo ? (gitInfo.ok ? "Merged and committed: " + gitInfo.message :
+        "Merged; commit skipped: " + gitInfo.error) : "Merged, not committed.") + when, "note")));
     } else {
-      box.append(make("div", "pr-merge", el("span", "Closed. Nothing was written.", "note")));
+      const when = pull.closed_at ? " · " + new Date(pull.closed_at * 1000).toLocaleString() : "";
+      box.append(make("div", "pr-merge", el("span", "Closed. Nothing was written." + when, "note")));
     }
-    container.replaceChildren(box);
+    return box;
+  }
+
+  // +added -removed lines over every file of a pull request, like the GitHub list.
+  function diffStat(files) {
+    let added = 0, removed = 0;
+    for (const file of files || []) {
+      for (const line of (file.diff || "").split("\n")) {
+        if (line.startsWith("+") && !line.startsWith("+++")) added++;
+        else if (line.startsWith("-") && !line.startsWith("---")) removed++;
+      }
+    }
+    return [added, removed];
+  }
+
+  function pullItem(pull) {
+    const [added, removed] = diffStat(pull.files);
+    const at = pull.state === "merged" && pull.merge && pull.merge.at ? pull.merge.at : pull.closed_at || pull.created;
+    const verb = pull.state === "merged" ? "merged " : pull.state === "closed" ? "closed " : "opened ";
+    const item = make("details", "pr-item", make("summary", "", badge(pull.state, PR_TONE[pull.state]),
+      el("span", "#" + pull.number + " " + pull.title, "title"), el("span", "+" + added, "stat-add"),
+      el("span", "\u2212" + removed, "stat-del"), el("span", verb + new Date(at * 1000).toLocaleTimeString(), "when")),
+      pullBox(pull, pullNotes[pull.number]));
+    item.open = expandedPulls.has(pull.number);
+    item.ontoggle = () => { if (item.open) expandedPulls.add(pull.number); else expandedPulls.delete(pull.number); };
+    return item;
   }
 
   async function mergePull(number, gitCommit, footer) {
@@ -325,12 +363,12 @@
       const data = await post("/bonus/pulls/" + number + "/merge", {git_commit: gitCommit});
       const seconds = Math.round((Date.now() - started) / 1000);
       if (data.status === "success") {
-        renderPull(patchResult, data.pull);
-        showMessage("bonus-message", "Merged #" + number + " · " + seconds + "s");
+        pullNotes[number] = undefined;
+        showMessage("bonus-message", "Merged #" + number + " · " + seconds + "s · it is now in the History");
         if (typeof dinoJump === "function") dinoJump();
       } else {
-        renderPull(patchResult, data.pull, data.status === "conflict" ? "Conflict: " + data.error :
-          data.status === "failed" ? "Merge failed validation and was rolled back. " + data.error : data.error);
+        pullNotes[number] = data.status === "conflict" ? "Conflict: " + data.error :
+          data.status === "failed" ? "Merge failed validation and was rolled back. " + data.error : data.error;
         showMessage("bonus-message", data.error, true);
       }
       if (typeof refreshOverview === "function") refreshOverview();
@@ -344,7 +382,7 @@
   async function closePull(number, footer) {
     footer.querySelectorAll("button").forEach((button) => { button.disabled = true; });
     try {
-      renderPull(patchResult, await post("/bonus/pulls/" + number + "/close", {}));
+      await post("/bonus/pulls/" + number + "/close", {});
       showMessage("bonus-message", "Closed #" + number + ". Nothing was written.");
     } catch (error) {
       showMessage("bonus-message", "Close failed: " + error.message, true);
@@ -356,12 +394,12 @@
     try {
       const response = await fetch("/bonus/pulls");
       const pulls = await response.json();
-      pullList.replaceChildren(...pulls.map((pull) => {
-        const item = make("li", "", badge(pull.state, PR_TONE[pull.state]), el("span", "#" + pull.number + " " + pull.title, "title"),
-          el("span", (pull.files || []).length + " files", "muted"));
-        item.onclick = () => { renderPull(patchResult, pull); showMessage("bonus-message", ""); };
-        return item;
-      }));
+      const open = pulls.filter((pull) => pull.state === "open");
+      const history = pulls.filter((pull) => pull.state !== "open");
+      const parts = [];
+      if (open.length) parts.push(el("div", "Open · " + open.length, "pr-group"), ...open.map(pullItem));
+      if (history.length) parts.push(el("div", "History · merged and closed · " + history.length, "pr-group"), ...history.map(pullItem));
+      pullList.replaceChildren(...parts);
       pullEmpty.hidden = pulls.length > 0;
     } catch (error) {
       pullEmpty.hidden = false;
@@ -370,7 +408,12 @@
 
   function renderBonus(container, data, seconds) {
     if (data.status === "open" && data.pull) {
-      renderPull(container, data.pull);
+      // the pull request itself lives in the Pull requests card, opened, so its diff is in one place only
+      expandedPulls.add(data.pull.number);
+      container.replaceChildren(make("div", "banner ok", el("div", "\u2713", "icon"),
+        make("div", "", el("strong", "Opened pull request #" + data.pull.number + ": " + data.pull.title),
+          el("span", "Checks passed · nothing written yet · review the diff below, then Merge or Close · " + seconds + "s"))));
+      loadPulls().then(() => pullsCard.scrollIntoView({behavior: "smooth", block: "start"}));
       return;
     }
     if (!data.dry_run && typeof renderPatchResult === "function") {

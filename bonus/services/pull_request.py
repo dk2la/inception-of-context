@@ -1,4 +1,6 @@
 """The bonus pull request: a Patch whose checks passed, held until someone merges or closes it."""
+import time
+
 from p3.models.patch import attempt_factory
 from p3.repositories.target_files import target_files_repository
 from p3.services.patch_loop import patch_loop_service
@@ -85,7 +87,8 @@ class PullRequestService:
                 git = self.git_commit_service.commit_patch(pull["patch"])
                 self.events.add("git", git)
             pull["state"] = "merged"
-            pull["merge"] = {"git": git}
+            pull["merge"] = {"git": git, "at": time.time()}
+            self.pulls.save()
             self.events.add("pull_merged", {"number": number, "title": pull["title"]})
             return self.reply("success", pull, [attempt], git)
 
@@ -97,6 +100,8 @@ class PullRequestService:
             return None
         if pull["state"] == "open":
             pull["state"] = "closed"
+            pull["closed_at"] = time.time()
+            self.pulls.save()
             self.events.add("pull_closed", {"number": number, "title": pull["title"]})
         return self.view(pull)
 

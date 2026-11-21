@@ -742,7 +742,7 @@
       <h2>3D View</h2>
       <p>Part 2 on the left, Part 1 in the middle, Part 3 on the right, each a level higher. The cubes follow the live system.</p>
     </div>
-    <div class="scene-keys muted">drag to rotate · scroll to zoom · click a cube to look inside · <kbd>←</kbd><kbd>→</kbd> tour · <kbd>F</kbd> fullscreen · <kbd>R</kbd> reset</div>
+    <div class="scene-keys muted">drag to rotate · scroll to zoom · click a cube to look inside · <kbd>←</kbd><kbd>→</kbd> tour · <kbd>P</kbd> full run · <kbd>+</kbd><kbd>−</kbd> speed · <kbd>F</kbd> fullscreen · <kbd>R</kbd> reset</div>
   </div>
   <div class="scene-wrap" id="scene-wrap">
     <div class="scene"><div class="world" id="world"></div></div>
@@ -750,6 +750,7 @@
       <div class="seg glass">
         <button class="btn small ghost" id="tour-prev" aria-label="Previous step">←</button>
         <button class="btn small primary" id="tour-start">Tour</button>
+        <button class="btn small ghost" id="tour-full" title="The whole system as one animation: Part 1, Part 2, Part 3">▶ Full run</button>
         <span class="mono" id="tour-count">–</span>
         <button class="btn small ghost" id="tour-next" aria-label="Next step">→</button>
       </div>
@@ -1704,6 +1705,20 @@ const REPLAYS = {
   ],
 };
 
+// The full run: every replay one after another, the camera flying to each part first (the tour's framings).
+// ["view", n] frames tour step n and waits for the camera.
+REPLAYS.full = [
+  ["info", "Full run · Inception-of-Context", TOUR[0].text], ["reset", "p1"], ["reset", "p2"], ["reset", "p3"],
+  ["view", 0], ["wait", 1200],
+  ["view", 3], ...REPLAYS.index, ["wait", 900],
+  ["view", 4], ...REPLAYS.facts, ["wait", 900],
+  ["view", 6], ...REPLAYS.ask, ["wait", 900],
+  ["view", 7], ...REPLAYS.rollback.slice(0, 1), ...REPLAYS.rollback.slice(1, 5),
+  ["view", 9], ...REPLAYS.rollback.slice(5),
+  ["view", 10], ["wait", 1500],
+  ["view", 0], ["info", "Full run · done", "Index, both kinds of question, and a Patch Loop that failed once, rolled back, passed and was reindexed. " + TOUR[TOUR.length - 1].text],
+];
+
 function clamp(value, low, high) {
   return Math.min(high, Math.max(low, value));
 }
@@ -1967,14 +1982,20 @@ function selectCube(id, fly = true) {
   openDetail(id);
 }
 
+// Flies the camera to tour step n's framing and highlights its cubes.
+function frameTourStep(step) {
+  setOrbit(false);
+  const mean = (key) => step.focus.reduce((sum, id) => sum + SCENE.cubes[id][key], 0) / step.focus.length;
+  moveCamera(step.focus.length ? {...step.cam, x: mean("x"), y: mean("y"), z: mean("z")} : step.cam, 1200 / SCENE.speed);
+  setFocus(step.focus);
+}
+
 function tourGo(index) {
+  SCENE.run++; // stops a replay or the full run
   SCENE.step = clamp(index, 0, TOUR.length - 1);
   const step = TOUR[SCENE.step];
-  setOrbit(false);
   closeDetail();
-  const mean = (key) => step.focus.reduce((sum, id) => sum + SCENE.cubes[id][key], 0) / step.focus.length;
-  moveCamera(step.focus.length ? {...step.cam, x: mean("x"), y: mean("y"), z: mean("z")} : step.cam);
-  setFocus(step.focus);
+  frameTourStep(step);
   const about = step.explain || step.focus[step.focus.length - 1];
   const [file, text] = step.text ? ["", step.text] : EXPLAIN[about];
   showInfo(step.text ? "Tour" : partName(about), step.title, text, file);
@@ -1983,6 +2004,7 @@ function tourGo(index) {
 }
 
 function resetScene() {
+  SCENE.run++; // stops a replay or the full run
   closeDetail();
   SCENE.step = -1;
   document.getElementById("tour-count").textContent = "–";
@@ -2004,11 +2026,12 @@ async function replay(name) {
     else if (action === "reset") for (const [key] of LANES[args[0]].nodes) cube3d(`${args[0]}-${key}`, "", "");
     else if (action === "reset3") for (const id of args) cube3d(id, "", "");
     else if (action === "wait") await sleep(args[0] / SCENE.speed);
+    else if (action === "view") { frameTourStep(TOUR[args[0]]); await sleep(1250 / SCENE.speed); }
     else if (action === "branch") setRouterBranch(args[0]);
     else if (action === "go") await sleep(flow3d(args) + 80);
     else cube3d(args[0], {on: "active", ok: "ok", fail: "fail", skip: "skipped"}[action], args[1]);
   }
-  if (name === "patch" || name === "rollback") dinoJump();
+  if (name === "patch" || name === "rollback" || name === "full") dinoJump();
   await sleep(2500);
   if (run === SCENE.run) {
     syncCubesFromMap();
@@ -2300,6 +2323,7 @@ function connectScene() {
     SCENE.cam.zoom = clamp(SCENE.cam.zoom * Math.exp(-e.deltaY * 0.0012), 0.3, 2.4);
   }, {passive: false});
   document.getElementById("tour-start").onclick = () => tourGo(0);
+  document.getElementById("tour-full").onclick = () => replay("full");
   document.getElementById("tour-next").onclick = () => tourGo(SCENE.step + 1);
   document.getElementById("tour-prev").onclick = () => tourGo(SCENE.step - 1);
   document.getElementById("scene-orbit").onclick = () => setOrbit(!SCENE.orbit);
@@ -2311,7 +2335,7 @@ function connectScene() {
   document.getElementById("scene-reset").onclick = resetScene;
   document.getElementById("scene-full").onclick = toggleFullscreen;
   for (const button of document.querySelectorAll("[data-replay]")) button.onclick = () => replay(button.dataset.replay);
-  document.getElementById("scene-speed").onchange = (e) => { SCENE.speed = Number(e.target.value) || 1; };
+  document.getElementById("scene-speed").onchange = (e) => setSpeed(Number(e.target.value) || 1);
   document.getElementById("sd-close").onclick = () => { closeDetail(); setFocus([]); };
   document.getElementById("scene-live-form").onsubmit = (e) => { e.preventDefault(); runLive(); };
   document.getElementById("scene-live-mode").onchange = (e) => {
@@ -2319,7 +2343,20 @@ function connectScene() {
   };
 }
 
-// Keys on the 3D View: ← → walk the tour, F fullscreen, R reset, I info card, Space starts or stops the orbit.
+// The animation speed: every wait, packet and camera move of a replay or the full run reads it, so a change
+// applies at once, even in the middle of a run. + and - step through the menu's values.
+function setSpeed(speed) {
+  SCENE.speed = speed;
+  document.getElementById("scene-speed").value = String(speed);
+}
+
+function stepSpeed(direction) {
+  const values = [...document.getElementById("scene-speed").options].map((option) => Number(option.value));
+  setSpeed(values[clamp(values.indexOf(SCENE.speed) + direction, 0, values.length - 1)]);
+}
+
+// Keys on the 3D View: ← → walk the tour, F fullscreen, R reset, I info card, Space starts or stops the orbit,
+// P the full run, + - the speed.
 function sceneKey(e) {
   if (document.getElementById("tab-scene").hidden) return false;
   if (e.key === "ArrowRight") tourGo(SCENE.step + 1);
@@ -2328,6 +2365,9 @@ function sceneKey(e) {
   else if (e.key === "r" || e.key === "R") resetScene();
   else if (e.key === "i" || e.key === "I") setInfoVisible(!infoVisible());
   else if (e.key === " ") setOrbit(!SCENE.orbit);
+  else if (e.key === "p" || e.key === "P") replay("full");
+  else if (e.key === "+" || e.key === "=") stepSpeed(1);
+  else if (e.key === "-" || e.key === "_") stepSpeed(-1);
   else return false;
   e.preventDefault();
   return true;

@@ -9,20 +9,23 @@ import os
 from p1.config.settings import settings
 
 MARKER = "=== FILE:"  # the line that starts each file in the Patch prompt; it must never reach a file
+# Added to every refusal about an existing test file. The reason goes back to the model for its next Attempt,
+# so it says what to do instead: a small model that is only told "no" sends the same mistake again.
+NEW_TEST_FILE = ". Leave {path} exactly as it is and put new tests in a NEW file such as tests/test_<feature>.py"
 
 
 class SanityService:
     def __init__(self, settings):
         # debug: settings.VALIDATION_CONFIG == "ioc.config.yml"
         # settings.MAX_FILES == 3, settings.MAX_SHRINK == 60
-        # self.rules is 10 bound methods, in the order below. check_patch walks them.
+        # self.rules is 11 bound methods, in the order below. check_patch walks them.
         self.settings = settings
         # outside_target must stay first: the rules after it read files from disk and trust the paths are inside.
         # Then the cheap rules that only look at the Patch, then the ones that read files (empties_file before
         # shrinks_too_much, so "replaced by nothing" gets its more specific reason), then the one that parses code.
         self.rules = [self.outside_target, self.touches_config, self.targets_folder, self.too_many_files,
-                      self.has_marker, self.creates_existing, self.weakens_tests, self.empties_file,
-                      self.shrinks_too_much, self.stub_function]
+                      self.has_marker, self.creates_existing, self.changes_nothing, self.weakens_tests,
+                      self.empties_file, self.shrinks_too_much, self.stub_function]
 
     def outside_target(self, patch, target_dir):
         """Refuse absolute paths and paths with a '..' part (a backslash counts as a separator)."""
@@ -82,9 +85,11 @@ class SanityService:
         # op "create", path "tests/test_power.py" (no such file yet) -> return == None
         # op "create", path "calculator/core.py" (the file is already there) ->
         # return == "create on existing file: calculator/core.py (use modify)"
+        # op "create", path "tests/test_core.py" -> the same, plus NEW_TEST_FILE: "put new tests in a NEW file ..."
         for entry in patch["files"]:
             if entry.get("op") == "create" and os.path.exists(os.path.join(target_dir, entry["path"])):
-                return f"create on existing file: {entry['path']} (use modify)"
+                reason = f"create on existing file: {entry['path']} (use modify)"
+                return reason + NEW_TEST_FILE.format(path=entry["path"]) if self.is_test_file(entry["path"]) else reason
         return None
 
     def old_content(self, entry, target_dir):
@@ -97,6 +102,19 @@ class SanityService:
             return ""
         with open(path, encoding="utf-8", errors="replace") as f:
             return f.read()
+
+    def changes_nothing(self, patch, target_dir):
+        """Refuse a Patch whose every file already has exactly that content: it would pass the tests and do nothing."""
+        # debug: core.py already has power() and the model sends core.py unchanged ->
+        # return == "the patch changes nothing: calculator/core.py is already like that"
+        # the same file plus one method -> return == None. Any create or delete is a change -> None
+        if not patch["files"] or any(entry.get("op") != "modify" for entry in patch["files"]):
+            return None
+        for entry in patch["files"]:
+            if (entry.get("content") or "") != self.old_content(entry, target_dir):
+                return None
+        paths = ", ".join(entry["path"] for entry in patch["files"])
+        return f"the patch changes nothing: {paths} is already like that"
 
     def empties_file(self, patch, target_dir):
         """Refuse to modify a non-empty file into "", "None" or "null" (a JSON null counts as nothing too)."""
@@ -212,16 +230,19 @@ class SanityService:
             if not self.is_test_file(entry["path"]) or not os.path.isfile(os.path.join(target_dir, entry["path"])):
                 continue
             if entry.get("op") == "delete":
-                return f"the Patch may not delete the test file {entry['path']}"
+                return (f"the Patch may not delete the test file {entry['path']}"
+                        + NEW_TEST_FILE.format(path=entry["path"]))
             old = self.tests_in(self.old_content(entry, target_dir))
             new = self.tests_in(entry.get("content") or "")
             if old is None or new is None:
                 continue  # py_compile in the Validation Command reports broken code better
             for name in old:
                 if name not in new:
-                    return f"the Patch removes the test {name} from {entry['path']}"
+                    return (f"the Patch removes the test {name} from {entry['path']}"
+                            + NEW_TEST_FILE.format(path=entry["path"]))
                 if new[name] != old[name]:
-                    return f"the Patch changes the test {name} in {entry['path']} (add new tests instead)"
+                    return (f"the Patch changes the test {name} in {entry['path']} (add new tests instead)"
+                            + NEW_TEST_FILE.format(path=entry["path"]))
         return None
 
     def check_patch(self, patch, target_dir):

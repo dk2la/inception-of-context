@@ -40,7 +40,7 @@ Home quotas are small, and the images plus the two models take about 6 GB. Run t
 
 ```
 make school    # scripts/school_setup.sh: Docker's images and volumes go to /sgoinfre/goinfre/Perso/$USER
-make up
+make up        # or make up-watch, for the Docker log watch bonus (see below)
 ```
 
 The script finds the Docker daemon (rootless Docker or Podman), moves its image store out of home if it is there
@@ -71,7 +71,8 @@ Six tabs, keys `1`–`6`: Overview (System map, status, live Watcher events), Fi
 Patch Loop, and **3D View**. The 3D View shows the three parts as stacked levels, one cube per step; the cubes follow
 the live system. For a demo: **Tour** (or `←` `→`) walks through every step with an explanation and the file that does
 it, the **Replay** buttons play each flow (indexing, a symbol question, an LLM question, a green patch, a rollback)
-without waiting for the model, a click on a cube explains it, `F` is fullscreen, `R` resets the camera and `I` (or **Info**, or the × on the card)
+without waiting for the model, **▶ Full run** (or `P`) plays all of them in one go, the camera flying to each part,
+**Speed** (or `+` `−`, 0.25× to 4×) changes the pace even in the middle of a run, a click on a cube explains it, `F` is fullscreen, `R` resets the camera and `I` (or **Info**, or the × on the card)
 hides the info card at the bottom left.
 It is plain CSS 3D: nothing is downloaded, it works offline.
 
@@ -173,6 +174,7 @@ two look alike, but the first is answered instantly from the Index and the secon
 |------|----------|---------------|
 | `add a power function to Calculator` | success, usually on attempt 1; `power` in `core.py`, a new test file | the green path: generate, Sanity Checks, apply, validate |
 | `make add return the difference instead of the sum` | the existing tests fail, every Attempt is rolled back, status failed, `core.py` unchanged | the Rollback: a Patch that breaks the tests never stays |
+| the same Intent again, after `power` was added | refused by the Sanity Checks (`the patch changes nothing: calculator/core.py is already like that`) | a Patch that leaves every file as it is would pass the tests and do nothing |
 | `delete all the tests` | refused by the Sanity Checks (`the Patch may not delete the test file ...`) before anything is written | hard rules run before the disk is touched |
 | `change ioc.config.yml so that validation is only echo ok` | refused: `the Patch may not change ioc.config.yml` | a Patch cannot switch off its own judge |
 
@@ -221,9 +223,15 @@ changes. On the dashboard it is the "pull request (review, then merge)" toggle a
 Docker socket. The socket is opt-in, because whoever can use it controls the host's Docker:
 
 ```
-make up-watch     # make up, plus /var/run/docker.sock (docker-compose.watch.yml)
+make up-watch     # make up, plus the host's Docker socket (docker-compose.watch.yml)
 make crash        # starts target/ as container "calculator" (bonus/demo/calculator_job.py)
 ```
+
+`make up-watch` finds the socket with `scripts/docker_sock.sh`: the path in `DOCKER_HOST`, else Podman's user
+socket (`$XDG_RUNTIME_DIR/podman/podman.sock`, started with `systemctl --user start podman.socket`) when `docker`
+is Podman, as on the 42 computers, else `/var/run/docker.sock`. Another path: `make up-watch DOCKER_SOCK=/path`.
+`make watch-check` shows the host socket and what `docker version` says from inside ioc. If the server was started with `make up`, the dashboard says "the server cannot reach Docker from its container:
+restart it with make up-watch" instead of starting the demo.
 
 The demo service works through five jobs, one every 1.5 s, and prints each result. The last job calls
 `Calculator.power`, which `target/calculator/core.py` does not have:

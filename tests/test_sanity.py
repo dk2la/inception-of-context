@@ -218,7 +218,7 @@ def test_content_that_only_contains_none_is_real_content(project, run):
 
 def test_an_already_empty_file_may_be_written_empty_again(project, run):
     write(project, "empty.py", "")
-    assert run(patch_of(modify("empty.py", ""))) is None
+    assert sanity_service.empties_file(patch_of(modify("empty.py", "")), project) is None
 
 
 def test_a_file_of_only_whitespace_counts_as_empty(project, run):
@@ -369,7 +369,7 @@ def test_the_marker_reason_wins_over_the_size_and_stub_reasons(project, run):
 
 def test_the_real_target_project_has_no_stubs(project, run):
     old = open(os.path.join(project, "calculator/core.py")).read()
-    assert run(patch_of(modify("calculator/core.py", old))) is None
+    assert sanity_service.stub_function(patch_of(modify("calculator/core.py", old)), project) is None
 
 
 # --- review fixes: folders and upper-case names ---
@@ -399,19 +399,19 @@ def read_test_core(project):
 
 def test_deleting_a_test_file_is_refused(run):
     reason = run({"summary": "", "files": [{"path": TEST_CORE, "op": "delete", "content": ""}]})
-    assert reason == f"the Patch may not delete the test file {TEST_CORE}"
+    assert reason.startswith(f"the Patch may not delete the test file {TEST_CORE}. Leave")
 
 
 def test_removing_a_test_is_refused(run, project):
     content = read_test_core(project).replace("def test_add_negative():", "def helper_add_negative():")
     reason = run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]})
-    assert reason == f"the Patch removes the test test_add_negative from {TEST_CORE}"
+    assert reason.startswith(f"the Patch removes the test test_add_negative from {TEST_CORE}. Leave")
 
 
 def test_changing_what_a_test_checks_is_refused(run, project):
     content = read_test_core(project).replace("assert Calculator().add(2, 3) == 5.0", "assert True")
     reason = run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]})
-    assert reason == f"the Patch changes the test test_add in {TEST_CORE} (add new tests instead)"
+    assert reason.startswith(f"the Patch changes the test test_add in {TEST_CORE} (add new tests instead). Leave")
 
 
 def test_adding_a_test_and_changing_comments_is_allowed(run, project):
@@ -437,3 +437,40 @@ def test_is_test_file(path, expected):
 def test_a_test_file_that_does_not_parse_is_left_to_the_validation_command(run, project):
     content = read_test_core(project) + "\ndef test_broken(:\n"
     assert run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]}) is None
+
+
+# --- changes_nothing: a Patch that leaves every file as it is ---
+
+def same(project, path):
+    with open(os.path.join(project, path), encoding="utf-8") as f:
+        return modify(path, f.read())
+
+
+def test_a_patch_that_changes_nothing_is_refused(run, project):
+    reason = run(patch_of(same(project, "calculator/core.py")))
+    assert reason == "the patch changes nothing: calculator/core.py is already like that"
+
+
+def test_one_changed_file_is_a_change(run, project):
+    changed = same(project, "calculator/core.py")
+    changed["content"] += "\n\ndef extra():\n    return 1\n"
+    assert sanity_service.changes_nothing(patch_of(same(project, "calculator/__init__.py"), changed), project) is None
+
+
+def test_a_create_is_a_change_even_next_to_an_unchanged_file(project):
+    patch = patch_of(same(project, "calculator/core.py"), create("tests/test_new.py"))
+    assert sanity_service.changes_nothing(patch, project) is None
+
+
+def test_an_empty_patch_is_left_to_the_other_rules(project):
+    assert sanity_service.changes_nothing(patch_of(), project) is None
+
+
+def test_a_create_over_a_test_file_says_where_new_tests_go(run):
+    reason = run(patch_of(create("tests/test_core.py", "def test_power():\n    assert 1\n")))
+    assert reason.startswith("create on existing file: tests/test_core.py (use modify). Leave tests/test_core.py")
+    assert "NEW file such as tests/test_<feature>.py" in reason
+
+
+def test_a_create_over_a_code_file_keeps_the_short_reason(run):
+    assert run(patch_of(create("calculator/core.py"))) == "create on existing file: calculator/core.py (use modify)"

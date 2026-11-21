@@ -10,6 +10,29 @@ from p3.repositories.target_files import target_files_repository
 DEMO_SCRIPT = os.path.join(os.path.dirname(__file__), "..", "demo", "calculator_job.py")
 DEMO_NAME = "calculator"
 DEMO_IMAGE = "python:3.12-slim"
+SOCKET = "/var/run/docker.sock"  # where docker-compose.watch.yml mounts the host's Docker or Podman socket
+NO_SOCKET = ("the server cannot reach Docker from its container: restart it with make up-watch "
+             "(it mounts the Docker or Podman socket; make up does not)")
+DEAD_SOCKET = ("the Docker socket is mounted, but nothing answers on it ({error}). Podman: on the host run "
+               "systemctl --user start podman.socket, then make up-watch again. make watch-check shows the details")
+
+
+def daemon_unreachable(text):
+    """True when docker failed because there is no daemon behind the socket, not for another reason."""
+    # debug: "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"
+    #   -> True (make up: no socket in the container). "Error: No such object: 30311b75d3f9" -> False
+    text = text.lower()
+    return any(sign in text for sign in ("cannot connect to the docker daemon", "docker.sock: connect:"))
+
+
+def unreachable_reason(text, socket_path=SOCKET):
+    """What to tell the user: no socket at all (make up), or a socket with no daemon behind it."""
+    # debug: make up -> /var/run/docker.sock does not exist -> NO_SOCKET
+    # make up-watch, but podman.socket stopped or restarted since -> DEAD_SOCKET with docker's last line
+    if not os.path.exists(socket_path):
+        return NO_SOCKET
+    lines = [line for line in text.strip().splitlines() if line.strip()]
+    return DEAD_SOCKET.format(error=lines[-1][-200:] if lines else "no reply")
 
 
 class DockerDemoService:
@@ -61,6 +84,8 @@ class DockerDemoService:
         # not in a container (no such id), or no mount there: return == None
         fmt = '{{range .Mounts}}{{if eq .Destination "' + self.settings.TARGET_DIR + '"}}{{.Source}}{{end}}{{end}}'
         done = self.run_docker(["inspect", socket.gethostname(), "--format", fmt])
+        if daemon_unreachable(done.stderr):
+            raise ConnectionError(unreachable_reason(done.stderr))
         source = done.stdout.strip()
         return source if done.returncode == 0 and source else None
 
@@ -71,6 +96,8 @@ class DockerDemoService:
         # no docker CLI or not in a container: return["ok"] == False with the reason
         try:
             target = self.host_target_dir()
+        except ConnectionError as error:
+            return {"ok": False, "service": DEMO_NAME, "error": str(error)}
         except (OSError, subprocess.SubprocessError) as error:
             return {"ok": False, "service": DEMO_NAME, "error": f"docker is not usable here: {error}"}
         if target is None:
