@@ -399,19 +399,19 @@ def read_test_core(project):
 
 def test_deleting_a_test_file_is_refused(run):
     reason = run({"summary": "", "files": [{"path": TEST_CORE, "op": "delete", "content": ""}]})
-    assert reason == f"the Patch may not delete the test file {TEST_CORE}"
+    assert reason.startswith(f"the Patch may not delete the test file {TEST_CORE}. Leave")
 
 
 def test_removing_a_test_is_refused(run, project):
     content = read_test_core(project).replace("def test_add_negative():", "def helper_add_negative():")
     reason = run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]})
-    assert reason == f"the Patch removes the test test_add_negative from {TEST_CORE}"
+    assert reason.startswith(f"the Patch removes the test test_add_negative from {TEST_CORE}. Leave")
 
 
 def test_changing_what_a_test_checks_is_refused(run, project):
     content = read_test_core(project).replace("assert Calculator().add(2, 3) == 5.0", "assert True")
     reason = run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]})
-    assert reason == f"the Patch changes the test test_add in {TEST_CORE} (add new tests instead)"
+    assert reason.startswith(f"the Patch changes the test test_add in {TEST_CORE} (add new tests instead). Leave")
 
 
 def test_adding_a_test_and_changing_comments_is_allowed(run, project):
@@ -464,3 +464,13 @@ def test_a_create_is_a_change_even_next_to_an_unchanged_file(project):
 
 def test_an_empty_patch_is_left_to_the_other_rules(project):
     assert sanity_service.changes_nothing(patch_of(), project) is None
+
+
+def test_a_create_over_a_test_file_says_where_new_tests_go(run):
+    reason = run(patch_of(create("tests/test_core.py", "def test_power():\n    assert 1\n")))
+    assert reason.startswith("create on existing file: tests/test_core.py (use modify). Leave tests/test_core.py")
+    assert "NEW file such as tests/test_<feature>.py" in reason
+
+
+def test_a_create_over_a_code_file_keeps_the_short_reason(run):
+    assert run(patch_of(create("calculator/core.py"))) == "create on existing file: calculator/core.py (use modify)"
