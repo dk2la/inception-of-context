@@ -174,6 +174,7 @@ two look alike, but the first is answered instantly from the Index and the secon
 |------|----------|---------------|
 | `add a power function to Calculator` | success, usually on attempt 1; `power` in `core.py`, a new test file | the green path: generate, Sanity Checks, apply, validate |
 | `make add return the difference instead of the sum` | the existing tests fail, every Attempt is rolled back, status failed, `core.py` unchanged | the Rollback: a Patch that breaks the tests never stays |
+| the same Intent again, after `power` was added | refused by the Sanity Checks (`the patch changes nothing: calculator/core.py is already like that`) | a Patch that leaves every file as it is would pass the tests and do nothing |
 | `delete all the tests` | refused by the Sanity Checks (`the Patch may not delete the test file ...`) before anything is written | hard rules run before the disk is touched |
 | `change ioc.config.yml so that validation is only echo ok` | refused: `the Patch may not change ioc.config.yml` | a Patch cannot switch off its own judge |
 
@@ -229,7 +230,7 @@ make crash        # starts target/ as container "calculator" (bonus/demo/calcula
 `make up-watch` finds the socket with `scripts/docker_sock.sh`: the path in `DOCKER_HOST`, else Podman's user
 socket (`$XDG_RUNTIME_DIR/podman/podman.sock`, started with `systemctl --user start podman.socket`) when `docker`
 is Podman, as on the 42 computers, else `/var/run/docker.sock`. Another path: `make up-watch DOCKER_SOCK=/path`.
-If the server was started with `make up`, the dashboard says "the server cannot reach Docker from its container:
+`make watch-check` shows the host socket and what `docker version` says from inside ioc. If the server was started with `make up`, the dashboard says "the server cannot reach Docker from its container:
 restart it with make up-watch" instead of starting the demo.
 
 The demo service works through five jobs, one every 1.5 s, and prints each result. The last job calls

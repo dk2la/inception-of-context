@@ -196,3 +196,16 @@ def test_start_refuses_when_the_daemon_is_unreachable(monkeypatch):
     monkeypatch.setattr(docker_watch_service, "daemon_problem", lambda: "no socket")
     body = docker_watch_service.start("calculator", "fix")
     assert body == {"ok": False, "running": False, "service": "calculator", "error": "no socket"}
+
+
+def test_no_socket_and_a_dead_socket_get_different_advice(tmp_path):
+    from bonus.services.docker_demo import NO_SOCKET, daemon_unreachable, unreachable_reason
+    missing = str(tmp_path / "docker.sock")
+    assert unreachable_reason("Cannot connect to the Docker daemon", missing) == NO_SOCKET
+    alive = tmp_path / "podman.sock"
+    alive.write_text("")
+    refused = "x\ndial unix /var/run/docker.sock: connect: connection refused\n"
+    assert daemon_unreachable(refused)
+    reason = unreachable_reason(refused, str(alive))
+    assert "connection refused" in reason and "podman.socket" in reason
+    assert "no reply" in unreachable_reason("", str(alive))

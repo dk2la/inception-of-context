@@ -7,7 +7,7 @@ ANSWER_MODEL = qwen2.5:3b
 PATCH_MODEL = qwen2.5-coder:3b
 
 .PHONY: build models up up-watch crash school purge p1 test lint logs down clean help \
-	status files chunks file context ask ask-llm patch dry-run reindex events watch-demo target-test restore check
+	watch-check status files chunks file context ask ask-llm patch dry-run reindex events watch-demo target-test restore check
 
 URL ?= http://localhost:8000
 Q ?= what functions are in core.py?
@@ -44,6 +44,12 @@ up-watch: build models
 	@[ -S "$(DOCKER_SOCK)" ] || { echo "No Docker socket at $(DOCKER_SOCK). Podman: systemctl --user start podman.socket. Or: make up-watch DOCKER_SOCK=/path/to/socket"; exit 1; }
 	$(WATCH) up -d ioc
 	@echo "IoC is running at http://localhost:8000 (Docker log watch enabled, socket $(DOCKER_SOCK))"
+
+# Docker log watch not working? Shows the socket on the host and what docker says from inside ioc.
+watch-check:
+	@echo "host socket: $(DOCKER_SOCK)"; ls -l "$(DOCKER_SOCK)" || true
+	-$(WATCH) exec ioc ls -l /var/run/docker.sock
+	-$(WATCH) exec ioc docker version
 
 # Indexes the Target Project once. Run it while the server is stopped (one writer per Index).
 p1:

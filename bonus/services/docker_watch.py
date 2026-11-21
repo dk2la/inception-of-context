@@ -5,7 +5,7 @@ import threading
 
 from p1.config.settings import settings
 from bonus.repositories.event_repository import bonus_event_repository
-from bonus.services.docker_demo import NO_SOCKET, daemon_unreachable
+from bonus.services.docker_demo import daemon_unreachable, unreachable_reason
 from bonus.services.patch_bonus import patch_bonus_service
 
 
@@ -54,7 +54,7 @@ class DockerWatchService:
         if done.returncode == 0:
             return None
         if daemon_unreachable(done.stderr + done.stdout):
-            return NO_SOCKET
+            return unreachable_reason(done.stderr + done.stdout)
         return done.stderr.strip()[-300:] or "docker failed"
 
     def stop(self):
