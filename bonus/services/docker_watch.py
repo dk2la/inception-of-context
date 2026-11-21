@@ -5,6 +5,7 @@ import threading
 
 from p1.config.settings import settings
 from bonus.repositories.event_repository import bonus_event_repository
+from bonus.services.docker_demo import NO_SOCKET, daemon_unreachable
 from bonus.services.patch_bonus import patch_bonus_service
 
 
@@ -28,6 +29,10 @@ class DockerWatchService:
         if shutil.which("docker") is None:
             self.status = {"running": False, "service": service, "error": "docker CLI is not available"}
             return {"ok": False, **self.status}
+        problem = self.daemon_problem()
+        if problem:
+            self.status = {"running": False, "service": service, "error": problem}
+            return {"ok": False, **self.status}
         if self._thread and self._thread.is_alive():
             return {"ok": False, "running": True, "service": self.status["service"],
                     "error": "a docker watch is already running"}
@@ -37,6 +42,20 @@ class DockerWatchService:
         self._thread.start()
         self.events.add("docker_watch", {"service": service})
         return {"ok": True, **self.status}
+
+    def daemon_problem(self):
+        """Why docker cannot be used from here, or None. Asked before following, so the card says it at once."""
+        # debug: make up (no socket) -> NO_SOCKET, "restart it with make up-watch". make up-watch -> None
+        try:
+            done = subprocess.run(["docker", "version", "--format", "{{.Server.Version}}"],
+                                  capture_output=True, text=True, timeout=15)
+        except (OSError, subprocess.SubprocessError) as error:
+            return f"docker is not usable here: {error}"
+        if done.returncode == 0:
+            return None
+        if daemon_unreachable(done.stderr + done.stdout):
+            return NO_SOCKET
+        return done.stderr.strip()[-300:] or "docker failed"
 
     def stop(self):
         """Ask the log follower to exit."""

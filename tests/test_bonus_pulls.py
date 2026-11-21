@@ -90,7 +90,8 @@ def test_merge_applies_exactly_the_reviewed_patch(bonus, core, fake_llm):
     assert body["status"] == "success"
     assert body["git"] is None
     assert body["pull"]["state"] == "merged"
-    assert body["pull"]["merge"] == {"git": None}
+    assert body["pull"]["merge"]["git"] is None
+    assert body["pull"]["merge"]["at"] > 0
     assert body["attempts"][0]["validation"]["ok"] is True
     assert core.read_text() == expected
     assert fake_llm.replies == []  # Merge does not ask the model again
@@ -133,7 +134,8 @@ def test_merge_that_fails_validation_is_rolled_back_and_stays_open(bonus, core, 
 def test_close_drops_the_pull_request_and_merge_then_refuses(bonus, core, fake_llm):
     before = core.read_text()
     open_pull(bonus, core, fake_llm)
-    assert bonus.post("/bonus/pulls/1/close").json()["state"] == "closed"
+    closed = bonus.post("/bonus/pulls/1/close").json()
+    assert closed["state"] == "closed" and closed["closed_at"] > 0
     assert bonus.post("/bonus/pulls/1/close").json()["state"] == "closed"
     body = bonus.post("/bonus/pulls/1/merge", json={}).json()
     assert body["status"] == "refused"
@@ -167,3 +169,43 @@ def test_keep_false_rolls_back_a_green_attempt(client, core, fake_llm):
     assert attempt["ok"] is True
     assert attempt["error"] is None
     assert core.read_text() == before
+
+
+# --- the history is saved next to the Index and read back after a restart ---
+
+
+def test_pull_requests_survive_a_restart(bonus, core, fake_llm):
+    open_pull(bonus, core, fake_llm)
+    bonus.post("/bonus/pulls/1/merge", json={"git_commit": False})
+    open_pull(bonus, core, fake_llm)
+    pull_repository.loaded_from = None  # what a new process sees
+    pull_repository.pulls = {}
+    pulls = bonus.get("/bonus/pulls").json()
+    assert [(p["number"], p["state"]) for p in pulls] == [(2, "open"), (1, "merged")]
+    assert "+    def power(self, a, b):" in pulls[1]["files"][0]["diff"]
+    assert pull_repository.get(2)["base"]["calculator/core.py"] == core.read_bytes()
+    assert pull_repository.next_number == 3
+
+
+def test_a_broken_history_file_means_no_history(temp_index, monkeypatch):
+    from p1.config.settings import settings
+    import os
+    monkeypatch.setattr(pull_repository, "loaded_from", None)
+    os.makedirs(os.path.dirname(pull_repository.path()), exist_ok=True)
+    with open(pull_repository.path(), "w") as handle:
+        handle.write("not json")
+    assert pull_repository.all() == []
+    assert settings.CHROMA_DIR in pull_repository.path()
+
+
+def test_a_base_of_a_new_file_is_kept_as_none(temp_index, monkeypatch):
+    monkeypatch.setattr(pull_repository, "loaded_from", None)
+    pull_repository.add({"title": "t", "state": "open", "base": {"new.py": None}})
+    pull_repository.loaded_from = None
+    assert pull_repository.get(1)["base"] == {"new.py": None}
+
+
+def test_an_unwritable_history_only_loses_the_history(temp_index, monkeypatch):
+    monkeypatch.setattr(pull_repository, "loaded_from", None)
+    monkeypatch.setattr(pull_repository, "path", lambda: "/proc/no/such/bonus_pulls.json")
+    assert pull_repository.add({"title": "t", "state": "open", "base": {}})["number"] == 1

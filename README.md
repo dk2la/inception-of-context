@@ -40,7 +40,7 @@ Home quotas are small, and the images plus the two models take about 6 GB. Run t
 
 ```
 make school    # scripts/school_setup.sh: Docker's images and volumes go to /sgoinfre/goinfre/Perso/$USER
-make up
+make up        # or make up-watch, for the Docker log watch bonus (see below)
 ```
 
 The script finds the Docker daemon (rootless Docker or Podman), moves its image store out of home if it is there
@@ -221,9 +221,15 @@ changes. On the dashboard it is the "pull request (review, then merge)" toggle a
 Docker socket. The socket is opt-in, because whoever can use it controls the host's Docker:
 
 ```
-make up-watch     # make up, plus /var/run/docker.sock (docker-compose.watch.yml)
+make up-watch     # make up, plus the host's Docker socket (docker-compose.watch.yml)
 make crash        # starts target/ as container "calculator" (bonus/demo/calculator_job.py)
 ```
+
+`make up-watch` finds the socket with `scripts/docker_sock.sh`: the path in `DOCKER_HOST`, else Podman's user
+socket (`$XDG_RUNTIME_DIR/podman/podman.sock`, started with `systemctl --user start podman.socket`) when `docker`
+is Podman, as on the 42 computers, else `/var/run/docker.sock`. Another path: `make up-watch DOCKER_SOCK=/path`.
+If the server was started with `make up`, the dashboard says "the server cannot reach Docker from its container:
+restart it with make up-watch" instead of starting the demo.
 
 The demo service works through five jobs, one every 1.5 s, and prints each result. The last job calls
 `Calculator.power`, which `target/calculator/core.py` does not have:

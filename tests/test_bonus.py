@@ -410,6 +410,7 @@ def test_docker_watch_starts_once_and_can_be_stopped(monkeypatch):
     import time
     service = reset_docker()
     monkeypatch.setattr("bonus.services.docker_watch.shutil.which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(service, "daemon_problem", lambda: None)
     entered = threading.Event()
 
     def follow(name, intent):
@@ -439,6 +440,7 @@ def test_docker_watch_replaces_a_finished_thread(monkeypatch):
     finished.join()
     service._thread = finished
     monkeypatch.setattr("bonus.services.docker_watch.shutil.which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(service, "daemon_problem", lambda: None)
     monkeypatch.setattr(service, "follow", lambda service_name, intent: None)
     body = service.start("web", "fix")
     service._thread.join(timeout=2)

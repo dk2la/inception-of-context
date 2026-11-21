@@ -35,9 +35,15 @@ up: build models
 
 # Bonus: the same as up, plus the host's Docker socket, so Docker log watch can read other containers' logs.
 WATCH = $(COMPOSE) -f docker-compose.yml -f docker-compose.watch.yml
+# The host socket mounted into ioc: DOCKER_HOST if it is a unix socket, Podman's user socket on a machine where
+# `docker` is Podman (42 computers), else Docker's default. Override with DOCKER_SOCK=/path/to/socket.
+DOCKER_SOCK ?= $(shell scripts/docker_sock.sh)
+export DOCKER_SOCK
 up-watch: build models
+	@if docker --version 2>/dev/null | grep -qi podman; then systemctl --user start podman.socket 2>/dev/null || true; fi
+	@[ -S "$(DOCKER_SOCK)" ] || { echo "No Docker socket at $(DOCKER_SOCK). Podman: systemctl --user start podman.socket. Or: make up-watch DOCKER_SOCK=/path/to/socket"; exit 1; }
 	$(WATCH) up -d ioc
-	@echo "IoC is running at http://localhost:8000 (Docker log watch enabled)"
+	@echo "IoC is running at http://localhost:8000 (Docker log watch enabled, socket $(DOCKER_SOCK))"
 
 # Indexes the Target Project once. Run it while the server is stopped (one writer per Index).
 p1:

@@ -10,6 +10,16 @@ from p3.repositories.target_files import target_files_repository
 DEMO_SCRIPT = os.path.join(os.path.dirname(__file__), "..", "demo", "calculator_job.py")
 DEMO_NAME = "calculator"
 DEMO_IMAGE = "python:3.12-slim"
+NO_SOCKET = ("the server cannot reach Docker from its container: restart it with make up-watch "
+             "(it mounts the Docker or Podman socket; make up does not)")
+
+
+def daemon_unreachable(text):
+    """True when docker failed because there is no daemon behind the socket, not for another reason."""
+    # debug: "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"
+    #   -> True (make up: no socket in the container). "Error: No such object: 30311b75d3f9" -> False
+    text = text.lower()
+    return "cannot connect to the docker daemon" in text or "docker.sock: connect: permission denied" in text
 
 
 class DockerDemoService:
@@ -61,6 +71,8 @@ class DockerDemoService:
         # not in a container (no such id), or no mount there: return == None
         fmt = '{{range .Mounts}}{{if eq .Destination "' + self.settings.TARGET_DIR + '"}}{{.Source}}{{end}}{{end}}'
         done = self.run_docker(["inspect", socket.gethostname(), "--format", fmt])
+        if daemon_unreachable(done.stderr):
+            raise ConnectionError(NO_SOCKET)
         source = done.stdout.strip()
         return source if done.returncode == 0 and source else None
 
@@ -71,6 +83,8 @@ class DockerDemoService:
         # no docker CLI or not in a container: return["ok"] == False with the reason
         try:
             target = self.host_target_dir()
+        except ConnectionError as error:
+            return {"ok": False, "service": DEMO_NAME, "error": str(error)}
         except (OSError, subprocess.SubprocessError) as error:
             return {"ok": False, "service": DEMO_NAME, "error": f"docker is not usable here: {error}"}
         if target is None:

@@ -159,3 +159,40 @@ def test_only_a_green_fix_is_verified(monkeypatch):
         monkeypatch.setattr(docker_watch_service.patch_bonus, "run", lambda *a, status=status, **k: {"status": status})
         docker_watch_service.patch_after_crash("calculator", "fix", ["Traceback", "AttributeError: x"])
     assert verified == ["calculator"]
+
+
+# --- make up (no socket) is reported in words the user can act on ---
+
+
+def test_no_socket_in_the_container_says_make_up_watch(monkeypatch):
+    scripted(monkeypatch, [Done(code=1, err="Cannot connect to the Docker daemon at unix:///var/run/docker.sock.")])
+    assert "make up-watch" in docker_demo_service.start()["error"]
+
+
+def test_the_watch_checks_the_daemon_before_following(monkeypatch):
+    import subprocess
+    from bonus.services.docker_watch import docker_watch_service
+    replies = []
+    monkeypatch.setattr("bonus.services.docker_watch.subprocess.run", lambda *a, **k: replies.pop(0))
+    replies.append(Done(out="27.3.1\n"))
+    assert docker_watch_service.daemon_problem() is None
+    replies.append(Done(code=1, err="Cannot connect to the Docker daemon at unix:///var/run/docker.sock."))
+    assert "make up-watch" in docker_watch_service.daemon_problem()
+    replies.append(Done(code=1, err="permission denied while trying something else"))
+    assert docker_watch_service.daemon_problem() == "permission denied while trying something else"
+    replies.append(Done(code=1))
+    assert docker_watch_service.daemon_problem() == "docker failed"
+
+    def broken(*args, **kwargs):
+        raise subprocess.TimeoutExpired("docker", 15)
+
+    monkeypatch.setattr("bonus.services.docker_watch.subprocess.run", broken)
+    assert "not usable" in docker_watch_service.daemon_problem()
+
+
+def test_start_refuses_when_the_daemon_is_unreachable(monkeypatch):
+    from bonus.services.docker_watch import docker_watch_service
+    monkeypatch.setattr("bonus.services.docker_watch.shutil.which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(docker_watch_service, "daemon_problem", lambda: "no socket")
+    body = docker_watch_service.start("calculator", "fix")
+    assert body == {"ok": False, "running": False, "service": "calculator", "error": "no socket"}
