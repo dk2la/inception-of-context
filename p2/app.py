@@ -15,6 +15,7 @@ from p1.views.events import events_view
 from p1.views.overview import overview_view
 from p2.views.dashboard import dashboard_view
 from p2.views.errors import error_handlers
+from p2.views.llm_live import llm_live_view
 from p2.views.questions import questions_view
 
 
@@ -50,6 +51,6 @@ class Lifecycle:
 lifecycle = Lifecycle(settings, indexer_service, watcher_service)
 
 app = FastAPI(title="Inception-of-Context", lifespan=lifecycle.lifespan)
-for view in (overview_view, events_view, questions_view, dashboard_view):
+for view in (overview_view, events_view, questions_view, llm_live_view, dashboard_view):
     app.include_router(view.router)
 error_handlers.add_error_handlers(app)

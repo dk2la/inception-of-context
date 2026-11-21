@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import threading
 
+from p1.config.settings import settings
 from bonus.repositories.event_repository import bonus_event_repository
 from bonus.services.patch_bonus import patch_bonus_service
 
@@ -54,24 +55,38 @@ class DockerWatchService:
         return "Traceback (most recent call last)" in line or "exited with code" in line and "code 0" not in line
 
     def follow(self, service, intent):
-        """Read the log until a crash, then run one Patch Loop. Further lines are ignored."""
-        # debug: service == "calculator", intent == "fix the crash in Calculator.divide"
+        """Read the log until a crash, then run one Patch Loop. Every line goes to the live feed."""
+        # debug: service == "calculator", intent == "add the missing power method to Calculator"
         # command is ["docker", "logs", "-f", "--tail", "50", "calculator"]
-        # a Traceback line emits type "docker_crash", then patch_bonus.run once:
-        #   k == 5, max_attempts == 1, dry_run == False, git_commit == False
-        # the docker logs process is then terminated. A later crash is not patched again.
+        # each line emits type "docker_log" {"service", "line"}, so the dashboard shows the log as it comes.
+        # "Traceback (most recent call last):" starts collecting; the first line that is not indented
+        # ("AttributeError: 'Calculator' object has no attribute 'power'") ends it. Then type "docker_crash"
+        # carries that traceback, and patch_bonus.run runs once with the Intent plus the traceback:
+        #   k == 5, max_attempts == 3 (MAX_ATTEMPTS: a red attempt tells the next one why), no dry run, no commit
+        # "exited with code 1" is a crash at once. The docker logs process is then terminated.
         proc = subprocess.Popen(
             ["docker", "logs", "-f", "--tail", "50", service],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         )
+        traceback = []  # the lines of a traceback being read, [] when none is
         try:
             for line in proc.stdout:
                 if self._stop:
                     break
-                if self.crashed(line):
-                    self.events.add("docker_crash", {"service": service, "line": line.strip()[:200]})
-                    self.patch_bonus.run(intent, k=5, max_attempts=1, dry_run=False, git_commit=False)
+                self.events.add("docker_log", {"service": service, "line": line.rstrip("\n")[:400]})
+                if traceback:
+                    traceback.append(line.rstrip("\n"))
+                    if line[:1] not in (" ", "\t"):  # the exception line closes the traceback
+                        self.patch_after_crash(service, intent, traceback)
+                        break
+                elif "Traceback (most recent call last)" in line:
+                    traceback = [line.rstrip("\n")]
+                elif self.crashed(line):
+                    self.patch_after_crash(service, intent, [line.rstrip("\n")])
                     break
+            else:
+                if traceback:  # the log ended inside a traceback
+                    self.patch_after_crash(service, intent, traceback)
         finally:
             proc.terminate()
             try:
@@ -80,6 +95,40 @@ class DockerWatchService:
                 proc.kill()
                 proc.wait(timeout=5)
             self.status = {"running": False, "service": service, "error": None}
+
+    def patch_after_crash(self, service, intent, lines):
+        """Tell the feed what crashed, then run one Patch Loop whose Intent includes the crash."""
+        # debug: lines == ["Traceback (most recent call last):", '  File "/demo/job.py", line 16, ...',
+        #                  "AttributeError: 'Calculator' object has no attribute 'power'"]
+        # events: "docker_crash" {"service": "calculator", "line": the last line, "traceback": all of them}
+        crash = "\n".join(lines[-40:])
+        self.events.add("docker_crash", {"service": service, "line": lines[-1].strip()[:200], "traceback": crash})
+        full_intent = f"{intent}\n\nThe container {service} crashed. The end of its log:\n{crash}"
+        result = self.patch_bonus.run(full_intent, k=5, max_attempts=settings.MAX_ATTEMPTS, dry_run=False,
+                                      git_commit=False)
+        if result and result.get("status") == "success":
+            self.verify(service)
+
+    def verify(self, service):
+        """After a green Patch, run the container again and show its new log: proof that the crash is gone."""
+        # debug: `docker start -a calculator` runs the same command on the patched target/ and prints its output.
+        # events: "docker_rerun", then "docker_log" per line, then "docker_verified" {"service", "ok"}:
+        #   ok True  when it exits 0 with no traceback ("all jobs done")
+        #   ok False on a traceback, a non-zero exit, or no exit within 120 s
+        self.events.add("docker_rerun", {"service": service})
+        proc = subprocess.Popen(["docker", "start", "-a", service],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        crashed = False
+        try:
+            for line in proc.stdout:
+                self.events.add("docker_log", {"service": service, "line": line.rstrip("\n")[:400]})
+                crashed = crashed or "Traceback (most recent call last)" in line
+            code = proc.wait(timeout=120)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            code = None
+        ok = not crashed and code == 0
+        self.events.add("docker_verified", {"service": service, "ok": ok, "exit_code": code})
 
 
 docker_watch_service = DockerWatchService(bonus_event_repository, patch_bonus_service)

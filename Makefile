@@ -1,7 +1,12 @@
+# On 42 computers .school.env (written by `make school`) is loaded here: DOCKER_HOST, and COMPOSE when the
+# machine has docker-compose or podman-compose instead of the `docker compose` plugin.
+-include .school.env
+COMPOSE ?= docker compose
+
 ANSWER_MODEL = qwen2.5:3b
 PATCH_MODEL = qwen2.5-coder:3b
 
-.PHONY: build models up up-watch crash p1 test lint logs down clean help \
+.PHONY: build models up up-watch crash school purge p1 test lint logs down clean help \
 	status files chunks file context ask ask-llm patch dry-run reindex events watch-demo target-test restore check
 
 URL ?= http://localhost:8000
@@ -14,29 +19,29 @@ JSON = -H 'Content-Type: application/json'
 #   docker compose run --rm ioc python -m pytest -q                 (this repository)
 
 build:
-	docker compose build ioc
+	$(COMPOSE) build ioc
 
 # Starts Ollama and downloads each model only if it is missing.
 models:
-	docker compose up -d ollama
-	until docker compose exec -T ollama ollama list > /dev/null 2>&1; do sleep 1; done
+	$(COMPOSE) up -d ollama
+	until $(COMPOSE) exec -T ollama ollama list > /dev/null 2>&1; do sleep 1; done
 	for model in $(ANSWER_MODEL) $(PATCH_MODEL); do \
-		docker compose exec -T ollama sh -c "ollama list | grep -q \"^$$model \" || ollama pull $$model" || exit 1; \
+		$(COMPOSE) exec -T ollama sh -c "ollama list | grep -q \"^$$model \" || ollama pull $$model" || exit 1; \
 	done
 
 up: build models
-	docker compose up -d ioc
+	$(COMPOSE) up -d ioc
 	@echo "IoC is running at http://localhost:8000"
 
 # Bonus: the same as up, plus the host's Docker socket, so Docker log watch can read other containers' logs.
-WATCH = docker compose -f docker-compose.yml -f docker-compose.watch.yml
+WATCH = $(COMPOSE) -f docker-compose.yml -f docker-compose.watch.yml
 up-watch: build models
 	$(WATCH) up -d ioc
 	@echo "IoC is running at http://localhost:8000 (Docker log watch enabled)"
 
 # Indexes the Target Project once. Run it while the server is stopped (one writer per Index).
 p1:
-	docker compose run --rm ioc python -m p1.index /workspace
+	$(COMPOSE) run --rm ioc python -m p1.index /workspace
 
 # flake8, using .flake8. The line limit is 120: the debug notes are longer than 79.
 lint:
@@ -45,19 +50,26 @@ lint:
 # Every test of this repository (unit + end-to-end, with a fake model), with the coverage report,
 # then the Target Project's own tests. Runs in the ioc image, on the code of this folder.
 test: build
-	docker compose run --rm --no-deps -v "$(CURDIR)":/app -e TARGET_DIR=/app/target -e PYTHONDONTWRITEBYTECODE=1 \
+	$(COMPOSE) run --rm --no-deps -v "$(CURDIR)":/app -e TARGET_DIR=/app/target -e PYTHONDONTWRITEBYTECODE=1 \
 		-e COVERAGE_FILE=/tmp/.coverage ioc sh -c "python -m coverage run -m pytest -q -p no:cacheprovider && python -m coverage report"
-	docker compose run --rm --no-deps -w /workspace -e PYTHONDONTWRITEBYTECODE=1 ioc python -m pytest -q -p no:cacheprovider
+	$(COMPOSE) run --rm --no-deps -w /workspace -e PYTHONDONTWRITEBYTECODE=1 ioc python -m pytest -q -p no:cacheprovider
+
+# ---------- 42 school computers ----------
+school:        ## 42 computers: Docker's images and volumes into sgoinfre, background build (scripts/school_setup.sh)
+	./scripts/school_setup.sh
+
+purge:         ## 42 computers, after the defense: containers, volumes, images, sgoinfre data
+	./scripts/school_setup.sh --uninstall
 
 logs:
-	docker compose logs -f
+	$(COMPOSE) logs -f
 
 down:
-	docker compose down
+	$(COMPOSE) down
 
 # Also deletes the Index and the downloaded models (several GB).
 clean:
-	docker compose down -v
+	$(COMPOSE) down -v
 
 # ---------- Check the running system (after make up). Each target is one curl; override Q=... or INTENT=... ----------
 
@@ -103,14 +115,15 @@ dry-run:       ## bonus: the diff INTENT would make, nothing written
 reindex:       ## bonus: full reindex now
 	@curl -sS -X POST $(URL)/bonus/reindex; echo
 
-crash:         ## bonus: run the Target Project as container "calculator" and crash it (power overflow)
+crash:         ## bonus demo: run target/ as service "calculator"; its last job calls a missing method and crashes
 	-@docker rm -f calculator > /dev/null 2>&1
-	-$(WATCH) run --name calculator calculator python -c \
-		"from calculator.core import Calculator; print(Calculator().power(10, 400.0))"
-	@echo 'Now Watch "calculator" in the Bonus tab, Intent: power must return inf instead of raising OverflowError'
+	$(WATCH) run -d --name calculator calculator > /dev/null
+	@echo 'Started container "calculator" (bonus/demo/calculator_job.py): 5 jobs, 1.5 s apart.'
+	@echo 'Bonus tab, Docker log watch: container "calculator", Intent "add the missing power method to Calculator", Watch.'
+	@echo 'After the Patch Loop: make crash again, and every job passes.'
 
 target-test:   ## the Target Project's own tests, in the container
-	docker compose run --rm --no-deps -w /workspace -e PYTHONDONTWRITEBYTECODE=1 ioc python -m pytest -q -p no:cacheprovider
+	$(COMPOSE) run --rm --no-deps -w /workspace -e PYTHONDONTWRITEBYTECODE=1 ioc python -m pytest -q -p no:cacheprovider
 
 restore:       ## undo every patch in target/
 	git checkout -- target/ && git clean -fdq target/

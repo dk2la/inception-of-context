@@ -16,7 +16,9 @@ class BonusStaticView:
 
     def script(self):
         # debug: GET /bonus/bonus.js. The body is bonus/static/bonus.js, media_type "text/javascript".
-        return FileResponse(os.path.join(self.static_dir, "bonus.js"), media_type="text/javascript")
+        # no-cache: the browser asks again on every load, so an edited bonus.js is never served stale
+        return FileResponse(os.path.join(self.static_dir, "bonus.js"), media_type="text/javascript",
+                            headers={"Cache-Control": "no-cache"})
 
 
 bonus_static_view = BonusStaticView(STATIC_DIR)

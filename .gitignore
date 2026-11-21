@@ -25,3 +25,4 @@ ollama_models/
 .idea/
 .vscode/
 
+.school.env

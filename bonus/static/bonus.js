@@ -28,6 +28,12 @@
   #bonus-live li { display: grid; grid-template-columns: auto auto 1fr; gap: 10px; align-items: center; padding: 7px 16px; font-size: 13px; }
   #bonus-live li + li { border-top: 1px solid var(--border); }
   #bonus-live .time { font: 12px var(--mono); color: var(--text-faint); }
+  .docker-log { margin: 0; padding: 8px 0; max-height: 260px; overflow: auto; font: 12px/1.5 var(--mono);
+                background: var(--code-bg); border-radius: var(--radius-sm); }
+  .docker-log span { display: block; padding: 0 12px; white-space: pre-wrap; word-break: break-word; }
+  .docker-log .tb { background: var(--fail-soft); color: var(--fail); }
+  .docker-log .mark { color: var(--accent); font-weight: 600; padding-top: 4px; padding-bottom: 4px; }
+  .docker-log .mark.ok { background: var(--ok-soft); color: var(--ok); }
   .compare { width: 100%; border-collapse: collapse; font-size: 13px; }
   .compare th, .compare td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--border); vertical-align: top; }
   .compare th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); border-top: 0; }
@@ -132,16 +138,41 @@
     make("div", "panel-head", el("h3", "Pull requests"), el("span", "GET /bonus/pulls", "bonus-chip")), pullList, pullEmpty);
 
   // Docker watch
-  const service = Object.assign(document.createElement("input"), {type: "text", id: "bonus-service", placeholder: "container name"});
+  const service = Object.assign(document.createElement("input"), {type: "text", id: "bonus-service", placeholder: "container name",
+    value: "calculator"});
   const dockerIntent = Object.assign(document.createElement("input"), {type: "text", id: "bonus-docker-intent",
     value: "fix the crash shown in the logs"});
   const watchButton = el("button", "Watch", "btn");
   const stopButton = el("button", "Stop", "btn ghost");
+  const demoButton = el("button", "Start demo crash", "btn primary");
+  const resetButton = el("button", "Reset demo", "btn ghost");
+  resetButton.title = "Put target/ back as it was before the first demo run (undoes the fix)";
+  demoButton.title = "Same as make crash: runs target/ as container \u201ccalculator\u201d; its last job crashes";
   const dockerStatus = badge("not watching");
+  // The container's log as it arrives; a traceback is drawn red. Demo: `make crash`, then Watch "calculator".
+  const dockerLog = make("pre", "docker-log");
+  dockerLog.id = "bonus-docker-log";
+  dockerLog.append(el("span", "No log yet. Run `make crash`, then Watch \u201ccalculator\u201d.", "muted"));
+  let inTraceback = false;
+  function logLine(text) {
+    if (dockerLog.querySelector(".muted")) dockerLog.replaceChildren();
+    if (text.includes("Traceback (most recent call last)")) inTraceback = true;
+    const exceptionLine = inTraceback && !text.includes("Traceback") && !/^\s/.test(text);
+    dockerLog.append(el("span", text || " ", inTraceback ? "tb" : ""));
+    if (exceptionLine) inTraceback = false;
+    if (dockerLog.children.length > 300) dockerLog.firstElementChild.remove();
+    dockerLog.scrollTop = dockerLog.scrollHeight;
+  }
+  function logMark(text, tone = "") {
+    if (dockerLog.querySelector(".muted")) dockerLog.replaceChildren();
+    dockerLog.append(el("span", "\u2014 " + text + " \u2014", "mark " + tone));
+    dockerLog.scrollTop = dockerLog.scrollHeight;
+  }
   const dockerCard = card("Docker log watch", "POST /bonus/docker/watch",
-    lead("Follows one container's logs; the first traceback runs the Patch Loop once (one attempt, no commit)."),
+    lead("Follows one container's logs. The first traceback runs the Patch Loop once (up to 3 attempts, no commit), " +
+         "with the traceback added to the Intent so the model sees what crashed."),
     make("div", "bonus-row", service), make("div", "bonus-row", dockerIntent),
-    make("div", "bonus-row", watchButton, stopButton, dockerStatus));
+    make("div", "bonus-row", demoButton, watchButton, stopButton, resetButton, dockerStatus), dockerLog);
 
   // Patch vs bonus patch
   const rows = [
@@ -199,7 +230,10 @@
     if (event.type === "attempt_started") return ["attempt " + detail.number + " started · " + detail.step, "accent"];
     if (event.type === "git") return [detail.ok ? "committed: " + detail.message : "git: " + detail.error, detail.ok ? "ok" : "warn"];
     if (event.type === "dry_run") return ["dry run · " + (detail.files || []).join(", "), "accent"];
-    if (event.type === "docker_crash") return ["docker crash · " + detail.service, "fail"];
+    if (event.type === "docker_rerun") return ["fixed: running " + detail.service + " again on the patched code", "accent"];
+    if (event.type === "docker_verified") return [detail.ok ? "verified · " + detail.service + " runs clean" :
+      "still crashing · " + detail.service + " (exit " + detail.exit_code + ")", detail.ok ? "ok" : "fail"];
+    if (event.type === "docker_crash") return ["docker crash · " + detail.service + " · " + (detail.line || ""), "fail"];
     if (event.type === "docker_watch") return ["watching docker logs · " + detail.service, "accent"];
     if (event.type === "started") return ["started · " + detail.intent + (detail.dry_run ? " (dry run)" : detail.pull_request ? " (pull request)" : ""), "accent"];
     if (event.type === "pull_opened") return ["opened #" + detail.number + " · " + detail.title, "accent"];
@@ -214,6 +248,9 @@
   const source = new EventSource("/bonus/events");
   source.onmessage = (message) => {
     const event = JSON.parse(message.data);
+    if (event.type === "docker_log") { logLine(event.detail.line); return; } // the log goes to its own box
+    if (event.type === "docker_rerun") { logMark("rerun after the fix"); inTraceback = false; }
+    if (event.type === "docker_verified") logMark(event.detail.ok ? "\u2713 verified: no crash" : "\u2717 still crashing", event.detail.ok ? "ok" : "tb");
     const [text, tone] = liveLine(event);
     const time = event.time ? new Date(event.time * 1000).toLocaleTimeString() : "";
     live.prepend(make("li", "", el("span", time, "time"), badge(event.type, tone), el("span", text)));
@@ -399,8 +436,38 @@
     dockerStatus.textContent = status.error ? status.error : status.running ? "watching " + status.service : "not watching";
     dockerStatus.className = "badge " + (status.error ? "fail" : status.running ? "ok" : "");
   }
+  // One click for the defense: start the crashing demo service, then watch it.
+  demoButton.onclick = async () => {
+    demoButton.disabled = true;
+    try {
+      const started = await post("/bonus/docker/demo", {});
+      if (!started.ok) { showDocker({error: started.error}); return; }
+      service.value = started.service;
+      watchButton.onclick();
+    } catch (error) {
+      showDocker({error: error.message});
+    } finally {
+      demoButton.disabled = false;
+    }
+  };
+  resetButton.onclick = async () => {
+    resetButton.disabled = true;
+    try {
+      const body = await post("/bonus/docker/demo/reset", {});
+      if (!body.ok) { showDocker({error: body.error}); return; }
+      dockerLog.replaceChildren();
+      logMark("reset: " + ([...body.restored, ...body.removed.map((p) => p + " (removed)")].join(", ") || "nothing changed"));
+      if (typeof refreshOverview === "function") refreshOverview();
+    } catch (error) {
+      showDocker({error: error.message});
+    } finally {
+      resetButton.disabled = false;
+    }
+  };
   watchButton.onclick = async () => {
     if (!service.value.trim()) { showDocker({error: "type a container name"}); return; }
+    dockerLog.replaceChildren();
+    inTraceback = false;
     try { showDocker(await post("/bonus/docker/watch", {service: service.value.trim(), intent: dockerIntent.value.trim()})); }
     catch (error) { showDocker({error: error.message}); }
   };

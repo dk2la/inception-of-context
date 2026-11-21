@@ -538,6 +538,8 @@
   .scene-detail h4 { margin: 4px 0 2px; font-size: 17px; }
   .scene-detail h5 { margin: 14px 0 6px; font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
   .scene-detail p { margin: 0 0 6px; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+  #sd-live-sec.writing h5::after { content: " ▍"; animation: sd-blink 1s steps(2) infinite; color: var(--accent); }
+  @keyframes sd-blink { 50% { opacity: 0; } }
   .scene-detail pre { margin: 0; max-height: 260px; overflow: auto; padding: 8px 10px; border-radius: 8px; font-size: 11.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; background: var(--code-bg, rgba(127, 127, 127, 0.1)); }
   .scene-detail ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
   .scene-detail li { font-size: 12.5px; }
@@ -969,12 +971,14 @@ function showTab(name) {
 // ---------- Overview ----------
 
 let answerModel = "the local model"; // the name shown under an answer; replaced by the real one from /status
+let patchModel = "the coder model"; // the Part 3 model, also from /status; tells the live output which cube it belongs to
 
 // Draws the status cards from GET /status, and the chips in the top bar.
 async function loadStatus() {
   try {
     const s = await api("/status");
     if (s.answer_model) answerModel = s.answer_model;
+    if (s.patch_model) patchModel = s.patch_model;
     document.getElementById("chip-chunks").textContent = s.chunks;
     document.getElementById("chip-models").textContent = `${s.answer_model} / ${s.patch_model}`;
     const container = document.getElementById("status-cards");
@@ -1052,6 +1056,87 @@ function eventItem(event) {
   const tone = event.type === "deleted" ? "fail" : "ok";
   return make("li", event.type, el("span", time, "time"), badge(event.type, tone), el("span", event.path, "path"),
               el("span", `${event.chunks} chunks`, "count"));
+}
+
+// ---------- What the model is writing right now (GET /llm/live) ----------
+
+// LLM_LIVE[model] == {id, text, done, error}: the latest generation of each model, filled as the tokens arrive.
+const LLM_LIVE = {};
+
+// The cube a model works in: the instruct model in Part 2, the coder model in Part 3.
+function liveCubeOf(model) {
+  return model === patchModel ? "p3-coder" : model === answerModel ? "p2-llm" : null;
+}
+
+// The model whose output a cube shows. The Ollama cube shows whichever model wrote last.
+function liveModelOf(id) {
+  if (id === "p3-coder") return patchModel;
+  if (id === "p2-llm") return answerModel;
+  if (id === "ollama") {
+    const latest = Object.entries(LLM_LIVE).sort((a, b) => b[1].id - a[1].id)[0];
+    return latest ? latest[0] : null;
+  }
+  return null;
+}
+
+function liveTitle(model, state) {
+  const what = state.error ? "failed" : state.done ? "finished" : "writing…";
+  return `Live output · ${model} · ${what} · ${state.text.length} chars`;
+}
+
+// The section at the top of the detail panel. Its <pre> is updated in place while the model writes.
+function liveSection(id) {
+  const model = liveModelOf(id);
+  const state = model && LLM_LIVE[model];
+  if (!state) return null;
+  const box = pre(state.text || "(waiting for the first token…)");
+  box.id = "sd-live";
+  const section = sec(liveTitle(model, state), box);
+  section.id = "sd-live-sec";
+  section.classList.toggle("writing", !state.done);
+  return section;
+}
+
+function refreshLiveSection(model) {
+  const id = SCENE.selected;
+  if (!id || liveModelOf(id) !== model) return;
+  const state = LLM_LIVE[model];
+  const box = document.getElementById("sd-live");
+  if (!box) { // the panel was opened before this model started: put the section in at the top
+    const fresh = liveSection(id);
+    const body = document.getElementById("sd-body");
+    if (fresh && body.firstChild) body.firstChild.after(fresh);
+    return;
+  }
+  const follow = box.scrollTop + box.clientHeight >= box.scrollHeight - 24; // keep following unless the user scrolled up
+  box.textContent = state.text || "(waiting for the first token…)";
+  if (follow) box.scrollTop = box.scrollHeight;
+  const section = document.getElementById("sd-live-sec");
+  section.querySelector("h5").textContent = liveTitle(model, state);
+  section.classList.toggle("writing", !state.done);
+}
+
+function startLLMLive() {
+  const source = new EventSource("/llm/live");
+  source.onmessage = (message) => {
+    const update = JSON.parse(message.data);
+    const state = update.reset || !LLM_LIVE[update.model]
+      ? (LLM_LIVE[update.model] = {id: update.id, text: "", done: false, error: null})
+      : LLM_LIVE[update.model];
+    state.text += update.delta;
+    state.done = update.done;
+    state.error = update.error;
+    const cube = liveCubeOf(update.model);
+    const chars = `${state.text.length} chars`;
+    if (!state.done) {
+      if (cube) cube3d(cube, "active", "writing · " + chars);
+      cube3d("ollama", "active", "generating · " + chars);
+    } else {
+      if (cube) cube3d(cube, state.error ? "fail" : "ok", state.error ? "failed" : "wrote " + chars);
+      cube3d("ollama", state.error ? "fail" : "ok", update.model);
+    }
+    refreshLiveSection(update.model);
+  };
 }
 
 // Shows the Watcher's events as the server pushes them (GET /events), newest first.
@@ -2160,7 +2245,8 @@ async function openDetail(id) {
   document.getElementById("scene-detail").hidden = false;
   document.getElementById("scene-wrap").classList.add("detail-open");
   const parts = await DETAIL[id]();
-  if (SCENE.selected === id) body.replaceChildren(para(EXPLAIN[id][1], "muted"), ...parts);
+  const live = liveSection(id); // the model's own words, streamed, above what the request returned
+  if (SCENE.selected === id) body.replaceChildren(para(EXPLAIN[id][1], "muted"), ...(live ? [live] : []), ...parts);
 }
 
 function toggleFullscreen() {
@@ -2301,6 +2387,7 @@ requestAnimationFrame(sceneFrame);
 refreshOverview();
 setInterval(refreshOverview, 3000);
 startActivityFeed();
+startLLMLive();
 checkPatchAvailable();
 
 // Open the tab named in the URL (#files), or Overview.

@@ -106,7 +106,46 @@ def test_a_traceback_in_the_logs_runs_one_patch_loop(monkeypatch):
 
     monkeypatch.setattr("bonus.services.docker_watch.subprocess.Popen", lambda *args, **kwargs: Logs())
     docker_watch_service.follow("web", "fix the crash")
-    assert calls == [{"k": 5, "max_attempts": 1, "dry_run": False, "git_commit": False}]
+    assert calls == [{"k": 5, "max_attempts": 3, "dry_run": False, "git_commit": False}]
+
+
+CRASH_LOG = [
+    "job subtract(9, 12) = -3.0\n",
+    "Traceback (most recent call last):\n",
+    '  File "/demo/job.py", line 18, in <module>\n',
+    "    print(getattr(calculator, name)(a, b))\n",
+    "AttributeError: 'Calculator' object has no attribute 'power'\n",
+    "never read\n",
+]
+
+
+def test_the_watch_streams_every_line_and_sends_the_whole_traceback(monkeypatch):
+    from bonus.repositories.event_repository import bonus_event_repository
+    from bonus.services.docker_watch import docker_watch_service
+    monkeypatch.setattr(bonus_event_repository, "events", [])
+    calls = []
+    monkeypatch.setattr(docker_watch_service.patch_bonus, "run", lambda *args, **kwargs: calls.append(args))
+    monkeypatch.setattr("bonus.services.docker_watch.subprocess.Popen", lambda *args, **kwargs: fake_logs(CRASH_LOG))
+    docker_watch_service.follow("calculator", "fix it")
+    logged = [e["detail"]["line"] for e in bonus_event_repository.events if e["type"] == "docker_log"]
+    assert logged == [line.rstrip("\n") for line in CRASH_LOG[:5]]
+    crash = [e["detail"] for e in bonus_event_repository.events if e["type"] == "docker_crash"][0]
+    assert crash["line"] == "AttributeError: 'Calculator' object has no attribute 'power'"
+    assert crash["traceback"].startswith("Traceback (most recent call last):")
+    intent = calls[0][0]
+    assert intent.startswith("fix it\n\nThe container calculator crashed.")
+    assert "has no attribute 'power'" in intent
+
+
+def test_a_log_that_ends_inside_a_traceback_still_runs_the_patch_loop(monkeypatch):
+    from bonus.services.docker_watch import docker_watch_service
+    calls = []
+    monkeypatch.setattr(docker_watch_service.patch_bonus, "run", lambda *args, **kwargs: calls.append(args))
+    monkeypatch.setattr("bonus.services.docker_watch.subprocess.Popen",
+                        lambda *args, **kwargs: fake_logs(CRASH_LOG[1:3]))
+    docker_watch_service.follow("calculator", "fix it")
+    assert len(calls) == 1
+    assert 'File "/demo/job.py"' in calls[0][0]
 
 
 def test_bonus_events_stream_the_validation_status(monkeypatch):
@@ -123,6 +162,7 @@ def test_the_bonus_dashboard_page_loads_the_script(temp_index):
     page = bonus_client(temp_index).get("/").text
     assert '<script src="/bonus/bonus.js"></script>' in page
     script = bonus_client(temp_index).get("/bonus/bonus.js")
+    assert script.headers["cache-control"] == "no-cache"
     assert script.status_code == 200
     assert "dry run" in script.text
 
@@ -428,7 +468,7 @@ def test_a_nonzero_exit_runs_the_patch_loop(monkeypatch):
         "bonus.services.docker_watch.subprocess.Popen",
         lambda *args, **kwargs: fake_logs(["exited with code 1\n"]))
     docker_watch_service.follow("web", "fix")
-    assert calls == [{"k": 5, "max_attempts": 1, "dry_run": False, "git_commit": False}]
+    assert calls == [{"k": 5, "max_attempts": 3, "dry_run": False, "git_commit": False}]
 
 
 def test_stopping_the_watch_ignores_the_next_log_line(monkeypatch):

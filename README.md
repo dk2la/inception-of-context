@@ -34,6 +34,23 @@ Then open <http://localhost:8000>.
 `qwen2.5-coder:3b` if they are missing, and starts the `ioc` service (API, Watcher and dashboard).
 The first run downloads the models; later runs take a few seconds.
 
+## On a 42 school computer
+
+Home quotas are small, and the images plus the two models take about 6 GB. Run this once after cloning:
+
+```
+make school    # scripts/school_setup.sh: Docker's images and volumes go to /sgoinfre/goinfre/Perso/$USER
+make up
+```
+
+The script finds the Docker daemon (rootless Docker or Podman), moves its image store out of home if it is there
+(it asks first), writes `.school.env` (`DOCKER_HOST`, and `COMPOSE` when the machine has `docker-compose` or
+`podman-compose`), which every `make` command loads by itself, and builds the ioc image in the background.
+`./scripts/school_setup.sh --help` lists the options (`--sgo DIR`, `--no-prefetch`, `--yes`).
+
+After the defense, `make purge` removes the containers, the volumes (Index and models), the images it pulled and
+the sgoinfre folder, and puts Docker's image store back. Only the clone is left.
+
 ## Step by step
 
 ```
@@ -118,6 +135,38 @@ keywords (BM25), so the order can differ from `sim`.
 | `how do I run the calculator?` | `python main.py 2 + 3`, from `README.md` | non-code files are indexed too |
 | `does the calculator support square roots?` | no, with the operators it does support | the model should not invent code that is not there |
 
+**The router: which branch a question takes.** Every Ask first goes through the router
+([p2/services/router.py](p2/services/router.py)). It has three branches, and the 3D View lights up the one it chose:
+
+| Branch | What it does | Model? | Time |
+|--------|--------------|--------|------|
+| `has_function` | looks the name up among the symbols of the Index: yes with the file and lines, or no | no | instant |
+| `file_functions` | lists every function and method of that file, from the Index, in source order | no | instant |
+| LLM | hybrid search for the top-k Chunks, then the instruct model answers from them | yes | seconds to minutes on CPU |
+
+The first two are exact questions with exact answers, so they skip the model: it cannot invent a function that
+does not exist ([ADR-0004](docs/adr/0004-symbol-questions-skip-the-llm.md)). Everything else goes to the model.
+
+| Type | Branch | Why |
+|------|--------|-----|
+| `is there a function power?` | `has_function` (power) | "is there a function X" |
+| `is there a method called divide?` | `has_function` (divide) | "method", "called" are allowed |
+| `does the function multiply exist?` | `has_function` (multiply) | the second English phrasing |
+| `есть ли функция power?` | `has_function` (power) | Russian |
+| `есть ли в проекте метод divide?` | `has_function` (divide) | Russian, with "в проекте" |
+| `what functions are in core.py?` | `file_functions` (core.py) | a file name needs an extension |
+| `which methods does calculator/core.py have?` | `file_functions` (calculator/core.py) | a full path works too |
+| `list the functions in cli.py` | `file_functions` (cli.py) | "list" / "show" |
+| `какие функции есть в core.py?` | `file_functions` (core.py) | Russian |
+| `покажи все методы в core.py` | `file_functions` (core.py) | Russian, "покажи" |
+| `is there a function that divides numbers?` | LLM | "that" is not a name: the pattern must reach the end of the question |
+| `what functions are in the project?` | LLM | "project" has no extension, so it is not a file |
+| `what does divide do?` | LLM | a question about behaviour, not about existence |
+| `what happens on division by zero?` | LLM | free text |
+
+For the defense, ask `is there a function power?` and then `is there a function that divides numbers?`: the
+two look alike, but the first is answered instantly from the Index and the second goes to the model.
+
 **Patch** (`POST /patch`, Part 3: it writes `target/` when green, a few minutes on CPU)
 
 | Type | Expected | What it shows |
@@ -173,10 +222,24 @@ Docker socket. The socket is opt-in, because whoever can use it controls the hos
 
 ```
 make up-watch     # make up, plus /var/run/docker.sock (docker-compose.watch.yml)
-make crash        # runs target/ as container "calculator"; power(10, 400.0) raises OverflowError
+make crash        # starts target/ as container "calculator" (bonus/demo/calculator_job.py)
 ```
 
-Then in the Bonus tab, Docker log watch: container `calculator`, Watch. The Traceback starts one Patch Loop.
+The demo service works through five jobs, one every 1.5 s, and prints each result. The last job calls
+`Calculator.power`, which `target/calculator/core.py` does not have:
+
+```
+job subtract(9, 12) = -3.0
+Traceback (most recent call last):
+  File "/demo/job.py", line 18, in <module>
+AttributeError: 'Calculator' object has no attribute 'power'
+```
+
+In the Bonus tab, Docker log watch: container `calculator`, Watch. The card shows the log as it arrives, with the
+traceback in red. The watch reads the traceback up to the exception line, adds it to the Intent ("fix the crash
+shown in the logs" is enough: the model sees what crashed) and runs one Patch Loop. The live feed shows the
+attempt and its validation. Then `make crash` again: every job passes and the log ends with `all jobs done`.
+`make restore` puts `target/` back for the next demo.
 
 ## Configuration
 
