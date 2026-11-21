@@ -6,4 +6,5 @@ rank_bm25==0.2.2
 pyyaml==6.0.3
 pytest==9.2.0
 coverage==7.17.3
+flake8==7.5.0
 httpx==0.28.1

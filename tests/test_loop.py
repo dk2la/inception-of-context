@@ -239,7 +239,9 @@ def test_restore_snapshot_twice_is_safe(target):
 
 
 def test_restore_snapshot_leaves_the_whole_target_project_byte_for_byte_as_it_was(target, real_target):
-    shutil.copytree(real_target, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+    shutil.copytree(
+        real_target, target, dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
     before = read_tree(target)
     snapshot = target_files_repository.take_snapshot(["calculator/core.py", "calculator/cli.py", "calculator/power.py"])
     (target / "calculator" / "core.py").write_text("changed\n")
@@ -297,7 +299,9 @@ def test_apply_patch_that_fails_while_preparing_leaves_the_real_files_untouched(
 
 
 def test_apply_patch_then_rollback_leaves_the_whole_target_project_byte_for_byte_as_it_was(target, real_target):
-    shutil.copytree(real_target, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+    shutil.copytree(
+        real_target, target, dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
     before = read_tree(target)
     patch = make_patch(
         ("calculator/core.py", "modify", "changed\n"),

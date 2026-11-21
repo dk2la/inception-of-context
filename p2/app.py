@@ -38,7 +38,8 @@ class Lifecycle:
 
     @contextlib.asynccontextmanager
     async def lifespan(self, app):
-        threading.Thread(target=self.start_indexing, daemon=True).start()  # a thread, so requests are answered meanwhile
+        # A thread, so requests are answered while the first index is still running.
+        threading.Thread(target=self.start_indexing, daemon=True).start()
         yield
         if self.observer:
             self.observer.stop()

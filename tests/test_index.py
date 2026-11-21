@@ -270,7 +270,9 @@ def test_index_all_never_indexes_skipped_files(temp_index):
 
 
 def test_index_all_on_the_real_target_finds_the_four_methods(temp_index, real_target):
-    shutil.copytree(real_target, temp_index, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+    shutil.copytree(
+        real_target, temp_index, dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
     indexer_service.index_all()
     methods = [n for n in names_of("calculator/core.py") if n.startswith("Calculator.")]
     assert methods == ["Calculator.add", "Calculator.divide", "Calculator.multiply", "Calculator.subtract"]

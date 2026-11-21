@@ -78,7 +78,8 @@ def test_p1_editing_a_file_reindexes_only_its_changed_chunks_and_streams_an_even
     methods_before = ids_by_name(server, CORE)
     original = read(server, CORE)
     try:
-        write(server, CORE, original + "\n    def negate(self, a):\n        \"\"\"Return -a.\"\"\"\n        return float(-a)\n")
+        extra = "\n    def negate(self, a):\n        \"\"\"Return -a.\"\"\"\n        return float(-a)\n"
+        write(server, CORE, original + extra)
         wait_until(lambda: "Calculator.negate" in ids_by_name(server, CORE))
         after = ids_by_name(server, CORE)
         for name in ["Calculator.add", "Calculator.subtract", "Calculator.multiply", "Calculator.divide"]:
@@ -198,7 +199,8 @@ def test_p2_part_2_alone_runs_without_the_patch_loop(tmp_path, ollama):
         alone.wait_ready()
         assert "/patch" not in alone.http.get("/openapi.json").json()["paths"]
         assert alone.http.post("/patch", json={"intent": "x"}).status_code in (404, 405)
-        assert alone.http.post("/ask", json={"question": "is there a function add?"}).json()["answer"].startswith("Yes.")
+        answer = alone.http.post("/ask", json={"question": "is there a function add?"}).json()["answer"]
+        assert answer.startswith("Yes.")
     finally:
         alone.stop()
 
@@ -210,8 +212,10 @@ def power_patch(server):
                                  '        return float(a ** b)\n')
     test = ("from calculator.core import Calculator\n\n\ndef test_power():\n"
             "    assert Calculator().power(2, 3) == 8.0\n")
-    return {"summary": "add power", "files": [{"path": CORE, "op": "modify", "content": core},
-                                             {"path": "tests/test_power.py", "op": "create", "content": test}]}
+    return {"summary": "add power", "files": [
+        {"path": CORE, "op": "modify", "content": core},
+        {"path": "tests/test_power.py", "op": "create", "content": test},
+    ]}
 
 
 def test_p3_a_good_patch_is_applied_validated_and_reindexed(server, ollama):
@@ -230,7 +234,8 @@ def test_p3_a_good_patch_is_applied_validated_and_reindexed(server, ollama):
         assert "=== FILE: calculator/core.py ===" in prompt
         assert "def power" in read(server, CORE)
         # The Watcher reindexes the touched files: the Index now knows the new function.
-        wait_until(lambda: server.http.post("/ask", json={"question": "is there a function power?"}).json()["answer"].startswith("Yes."))
+        question = {"question": "is there a function power?"}
+        wait_until(lambda: server.http.post("/ask", json=question).json()["answer"].startswith("Yes."))
         assert not [p for p in tree(server.target) if p.endswith(".ioc.tmp")]
     finally:
         os.remove(os.path.join(server.target, "tests/test_power.py"))
@@ -243,8 +248,11 @@ def test_p3_three_failed_attempts_roll_back_byte_for_byte(server, ollama):
     broken = json.loads(json.dumps(power_patch(server)))
     broken["files"][0]["content"] = broken["files"][0]["content"].replace("a ** b", "a * b")  # the new test fails
     broken["files"].append({"path": "newpkg/deep/helper.py", "op": "create", "content": "X = 1\n"})
-    syntax_error = {"summary": "s", "files": [{"path": CORE, "op": "modify",
-                                               "content": read(server, CORE).replace("return float(a + b)", "return float(a +")}]}
+    syntax_error = {"summary": "s", "files": [{
+        "path": CORE,
+        "op": "modify",
+        "content": read(server, CORE).replace("return float(a + b)", "return float(a +"),
+    }]}
     ollama.replies["qwen2.5-coder:3b"].extend([json.dumps(broken), json.dumps(syntax_error), "this is not json"])
 
     body = server.http.post("/patch", json={"intent": "add power", "max_attempts": 3}).json()

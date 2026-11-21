@@ -24,7 +24,7 @@ class ChunkerService:
         """Return lines start..end (1-based, inclusive) as one string."""
         # debug: lines[3:6] of calculator/core.py, start == 4, end == 6
         # return == "    def add(self, a, b):\n        \"\"\"Return a + b.\"\"\"\n        return float(a + b)"
-        return "\n".join(lines[start - 1 : end])
+        return "\n".join(lines[start - 1:end])
 
     def first_line(self, node):
         """The first line of a function or class: its topmost decorator, or the def/class line."""
@@ -143,7 +143,8 @@ class ChunkerService:
                     if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         start, end = self.first_line(item), item.end_lineno
                         name = node.name + "." + item.name
-                        chunks.append(self.chunk_factory.make_chunk(path, start, end, name, "method", self.cut(lines, start, end)))
+                        chunks.append(self.chunk_factory.make_chunk(
+                            path, start, end, name, "method", self.cut(lines, start, end)))
 
         # The module header: every line that is not inside a function or a class.
         header = [n for n in range(1, len(lines) + 1) if n not in covered]
@@ -153,7 +154,8 @@ class ChunkerService:
             header.pop()
         if header:
             header_text = "\n".join(lines[n - 1] for n in header)
-            chunks.insert(0, self.chunk_factory.make_chunk(path, header[0], header[-1], "<module>", "module", header_text))
+            chunks.insert(0, self.chunk_factory.make_chunk(
+                path, header[0], header[-1], "<module>", "module", header_text))
         return chunks
 
     def chunk_file(self, path, text):

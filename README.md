@@ -134,6 +134,7 @@ The tests never call a model (a fake replaces it) and never touch the real Index
 
 ```
 make test                                # everything in Docker: repository tests with coverage, then the Target Project's tests
+make lint                                # flake8 on p1, p2, p3, bonus and tests (.flake8, 120 columns)
 python -m pytest -q                      # the repository tests, from the repository root
 python -m pytest -q tests/e2e            # only the end-to-end tests
 cd target && python -m pytest -q         # the Target Project's own tests

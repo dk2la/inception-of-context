@@ -1,6 +1,5 @@
 from p1.config.settings import settings
 import p1.core.llm as llm_module
-from p1.core.llm import llm_client
 
 
 # --- POST /ask ---

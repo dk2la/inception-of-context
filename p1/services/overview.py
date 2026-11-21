@@ -77,7 +77,8 @@ class OverviewService:
         content = self.file_repository.read_text(full)
         if content is None:  # missing, a folder or binary
             return None
-        chunks = [{key: meta[key] for key in CHUNK_FIELDS} for meta in self.chunk_repository.metadata_by_id(rel_path).values()]
+        chunks = [{key: meta[key] for key in CHUNK_FIELDS}
+                  for meta in self.chunk_repository.metadata_by_id(rel_path).values()]
         chunks.sort(key=lambda chunk: chunk["start_line"])
         return {"path": rel_path, "content": content, "chunks": chunks}
 

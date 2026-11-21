@@ -120,7 +120,8 @@ def test_watcher_ignores_temporary_hidden_and_skipped_files(temp_index, monkeypa
         write(temp_index, "b.py.ioc.tmp", "def b():\n    pass\n")
         write(temp_index, ".swap.py", "def s():\n    pass\n")
         write(temp_index, "__pycache__/c.py", "def c():\n    pass\n")
-        write(temp_index, "marker.py", "def m():\n    return 1\n")  # written last, so it is the proof we waited long enough
+        # Written last, so it is the proof we waited long enough.
+        write(temp_index, "marker.py", "def m():\n    return 1\n")
         assert wait_until(lambda: happened("indexed", "marker.py"))
         time.sleep(1)
         assert [e["path"] for e in event_repository.events] == ["marker.py"] * len(event_repository.events)

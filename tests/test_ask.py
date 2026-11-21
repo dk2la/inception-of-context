@@ -4,7 +4,6 @@ import pytest
 
 from p1.config.settings import settings
 import p1.core.llm as llm_module
-from p1.core.llm import llm_client
 from p1.services.indexer import indexer_service
 from p2.services.ask import ask_service
 
@@ -171,7 +170,10 @@ def test_find_symbol_returns_chunk_dictionaries(temp_index):
 
 
 def test_find_symbol_lists_every_match_in_path_and_line_order(temp_index):
-    index_files(temp_index, {"b.py": "def run():\n    pass\n", "a.py": "class A:\n    def run(self):\n        pass\n\n\ndef run():\n    pass\n"})
+    index_files(temp_index, {
+        "b.py": "def run():\n    pass\n",
+        "a.py": "class A:\n    def run(self):\n        pass\n\n\ndef run():\n    pass\n",
+    })
     found = ask_service.find_symbol("run")
     assert [(c["path"], c["name"]) for c in found] == [("a.py", "A.run"), ("a.py", "run"), ("b.py", "run")]
 

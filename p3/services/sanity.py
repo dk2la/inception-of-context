@@ -83,7 +83,10 @@ class SanityService:
         return None
 
     def shrinks_too_much(self, patch, target_dir):
-        """Refuse a modify that cuts a file by more than self.settings.MAX_SHRINK percent: the model probably left out most of it."""
+        """Refuse a modify that cuts a file by more than MAX_SHRINK percent.
+
+        The model probably left out most of the file.
+        """
         for entry in patch["files"]:
             if entry.get("op") != "modify":
                 continue
@@ -91,7 +94,8 @@ class SanityService:
             new = entry.get("content") or ""
             if old.strip() and len(new) < len(old) * (100 - self.settings.MAX_SHRINK) / 100:
                 shrink = round(100 - 100 * len(new) / len(old))
-                return f"{entry['path']} would shrink by {shrink} % (limit {self.settings.MAX_SHRINK} %), send the whole file"
+                return (f"{entry['path']} would shrink by {shrink} % "
+                        f"(limit {self.settings.MAX_SHRINK} %), send the whole file")
         return None
 
     def does_nothing(self, statement):

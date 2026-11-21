@@ -23,7 +23,7 @@ class TargetFilesRepository:
         return snapshot
 
     def restore_snapshot(self, snapshot):
-        """Rollback: put every file back as the Snapshot saw it, and delete the files (and folders) that did not exist."""
+        """Rollback: restore every file from the Snapshot, and delete files and folders that did not exist."""
         for rel_path, data in snapshot.items():
             path = self.file_repository.full_path(rel_path)
             if data is not None:

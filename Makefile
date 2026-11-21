@@ -1,7 +1,7 @@
 ANSWER_MODEL = qwen2.5:3b
 PATCH_MODEL = qwen2.5-coder:3b
 
-.PHONY: build models up p1 test logs down clean
+.PHONY: build models up p1 test lint logs down clean
 
 # The tests also run inside the container:
 #   docker compose run --rm -w /workspace ioc python -m pytest -q   (the Target Project)
@@ -25,6 +25,10 @@ up: build models
 # Indexes the Target Project once. Run it while the server is stopped (one writer per Index).
 p1:
 	docker compose run --rm ioc python -m p1.index /workspace
+
+# flake8, using .flake8. The line limit is 120: the debug notes are longer than 79.
+lint:
+	python3 -m flake8 p1 p2 p3 bonus tests
 
 # Every test of this repository (unit + end-to-end, with a fake model), with the coverage report,
 # then the Target Project's own tests. Runs in the ioc image, on the code of this folder.

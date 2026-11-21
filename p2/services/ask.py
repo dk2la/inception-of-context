@@ -96,12 +96,13 @@ class AskService:
         # kind == "has_function", value == "divide"
         #   answer == 'Yes. "divide" exists:\n- method Calculator.divide in calculator/core.py, lines 16-20'
         # kind == "file_functions", value == "core.py"
-        #   answer == "calculator/core.py defines 4 functions: Calculator.add, Calculator.subtract, Calculator.multiply, Calculator.divide."
+        #   answer == "calculator/core.py defines 4 functions: Calculator.add, "
+        #             "Calculator.subtract, Calculator.multiply, Calculator.divide."
         if kind == "has_function":
             chunks = self.find_symbol(value)
             if chunks:
-                places = [f"- {c['kind'].replace('_', ' ')} {c['name']} in {c['path']}, lines {c['start_line']}-{c['end_line']}"
-                          for c in chunks]
+                places = [f"- {c['kind'].replace('_', ' ')} {c['name']} in {c['path']}, "
+                          f"lines {c['start_line']}-{c['end_line']}" for c in chunks]
                 answer = f'Yes. "{value}" exists:\n' + "\n".join(places)
             else:
                 answer = f'No. There is no function or method named "{value}" in the Target Project.'
@@ -124,7 +125,8 @@ class AskService:
         #   routed == ("file_functions", "core.py")
         # question == "what happens on division by zero?"
         #   routed == None. search() returns the top 5 Chunks. prompt goes to qwen2.5:3b.
-        #   return == {"answer": "Calculator.divide raises ZeroDivisionError ...", "sources": [chunks], "used_llm": True}
+        #   return == {"answer": "Calculator.divide raises ZeroDivisionError ...",
+        #              "sources": [chunks], "used_llm": True}
         # empty Index on that last question: answer == "The Index is empty, so I cannot answer yet.", used_llm == False
         routed = self.router_service.route_question(question)
         if routed:  # "is there a function X?" and "what functions are in Y?" never reach the model

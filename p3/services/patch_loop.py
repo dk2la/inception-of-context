@@ -68,7 +68,8 @@ class PatchLoopService:
 
     def build_patch_prompt(self, intent, k, previous=None):
         """The text for one Attempt. previous is None, or {"patch": the last Patch or None, "error": why it failed}."""
-        names = [self.file_repository.relative_path(p) for p in self.file_repository.list_files(self.settings.TARGET_DIR)]
+        names = [self.file_repository.relative_path(path)
+                 for path in self.file_repository.list_files(self.settings.TARGET_DIR)]
         parts = ["FILES IN THE PROJECT:\n" + "\n".join(names)]
         # The Chunks only say which files matter; the model gets each of those files whole, once.
         for path in dict.fromkeys(chunk["path"] for chunk in self.search_service.search(intent, k)):
@@ -86,7 +87,8 @@ class PatchLoopService:
     def run_attempt(self, intent, k, previous, number):
         """One Attempt: generate, parse, Sanity Checks, snapshot, apply, validate. A failed Attempt is rolled back."""
         attempt = self.attempt_factory.new_attempt(number)
-        text = self.llm_client.call_llm(self.settings.PATCH_MODEL, self.build_patch_prompt(intent, k, previous), json_mode=True)
+        text = self.llm_client.call_llm(
+            self.settings.PATCH_MODEL, self.build_patch_prompt(intent, k, previous), json_mode=True)
         patch, reason = self.parse_patch(text)
         if reason:
             attempt["generation"] = {"ok": False, "error": reason}
@@ -117,7 +119,8 @@ class PatchLoopService:
             else:  # applying worked, but the Validation Command could not run
                 attempt["validation"] = {"ok": False, "log": str(e)}
                 attempt["error"] = "validation failed:\n" + str(e)
-        self.target_files_repository.restore_snapshot(snapshot)  # whatever failed, the next Attempt starts from the original code
+        # Whatever failed, the next Attempt starts from the original code.
+        self.target_files_repository.restore_snapshot(snapshot)
         return attempt
 
     def run_patch_loop(self, intent, k=5, max_attempts=settings.MAX_ATTEMPTS):

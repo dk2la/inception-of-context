@@ -58,7 +58,8 @@ class SearchRepository:
         #     "name": "Calculator.divide", "kind": "method", "hash": "…",
         # }, ...]
         found = self.chroma_db.get_collection().get(where={"kind": {"$in": kinds}})
-        return [dict(meta, id=id_, text=text) for id_, text, meta in zip(found["ids"], found["documents"], found["metadatas"])]
+        return [dict(meta, id=id_, text=text)
+                for id_, text, meta in zip(found["ids"], found["documents"], found["metadatas"])]
 
     def metadata_of_file(self, path):
         """The metadata of every Chunk of one file."""

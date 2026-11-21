@@ -415,12 +415,14 @@ def test_changing_what_a_test_checks_is_refused(run, project):
 
 
 def test_adding_a_test_and_changing_comments_is_allowed(run, project):
-    content = "# tests of Calculator\n" + read_test_core(project) + "\n\ndef test_power():\n    assert Calculator().power(2, 3) == 8.0\n"
+    content = ("# tests of Calculator\n" + read_test_core(project)
+               + "\n\ndef test_power():\n    assert Calculator().power(2, 3) == 8.0\n")
     assert run({"summary": "", "files": [{"path": TEST_CORE, "op": "modify", "content": content}]}) is None
 
 
 def test_creating_a_new_test_file_is_allowed(run):
-    content = "from calculator.core import Calculator\n\n\ndef test_power():\n    assert Calculator().power(2, 3) == 8.0\n"
+    content = ("from calculator.core import Calculator\n\n\n"
+               "def test_power():\n    assert Calculator().power(2, 3) == 8.0\n")
     assert run({"summary": "", "files": [{"path": "tests/test_power.py", "op": "create", "content": content}]}) is None
 
 

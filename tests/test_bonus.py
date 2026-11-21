@@ -31,7 +31,10 @@ def test_reindex_reports_the_chunk_count(temp_index):
 def test_dry_run_returns_a_diff_and_does_not_write(temp_index, fake_llm):
     path = write(temp_index, "a.py", "def a():\n    return 1\n")
     new = "def a():\n    return 2\n"
-    fake_llm.replies = [json.dumps({"summary": "return 2", "files": [{"path": "a.py", "op": "modify", "content": new}]})]
+    fake_llm.replies = [json.dumps({
+        "summary": "return 2",
+        "files": [{"path": "a.py", "op": "modify", "content": new}],
+    })]
     body = bonus_client(temp_index).post("/bonus/patch", json={"intent": "return 2", "dry_run": True, "k": 1}).json()
     assert body["status"] == "dry_run"
     assert body["dry_run"] is True
@@ -57,10 +60,15 @@ def test_git_commit_records_the_model_message(temp_index, fake_llm):
     subprocess.run(["git", "-C", temp_index, "config", "user.name", "bonus"], check=True)
     fake_llm.replies = ["return two from a"]
     from bonus.services.git_commit import git_commit_service
-    result = git_commit_service.commit_patch({"summary": "return 2", "files": [{"path": "a.py", "op": "modify", "content": "x"}]})
+    result = git_commit_service.commit_patch({
+        "summary": "return 2",
+        "files": [{"path": "a.py", "op": "modify", "content": "x"}],
+    })
     assert result["ok"] is True
     assert result["message"] == "return two from a"
-    log = subprocess.run(["git", "-C", temp_index, "log", "-1", "--format=%s"], check=True, capture_output=True, text=True)
+    log = subprocess.run(
+        ["git", "-C", temp_index, "log", "-1", "--format=%s"],
+        check=True, capture_output=True, text=True)
     assert log.stdout.strip() == "return two from a"
 
 
@@ -83,7 +91,9 @@ def test_docker_watch_refuses_when_the_cli_is_missing(monkeypatch):
 def test_a_traceback_in_the_logs_runs_one_patch_loop(monkeypatch):
     from bonus.services.docker_watch import docker_watch_service
     calls = []
-    monkeypatch.setattr(docker_watch_service.patch_bonus, "run", lambda *args, **kwargs: calls.append(kwargs) or {"status": "failed"})
+    monkeypatch.setattr(
+        docker_watch_service.patch_bonus, "run",
+        lambda *args, **kwargs: calls.append(kwargs) or {"status": "failed"})
 
     class Logs:
         stdout = iter(["ready\n", "Traceback (most recent call last):\n", "later\n"])
@@ -399,7 +409,9 @@ def test_a_clean_exit_does_not_run_the_patch_loop(monkeypatch):
     from bonus.services.docker_watch import docker_watch_service
     calls = []
     monkeypatch.setattr(docker_watch_service.patch_bonus, "run", lambda *args, **kwargs: calls.append(kwargs))
-    monkeypatch.setattr("bonus.services.docker_watch.subprocess.Popen", lambda *args, **kwargs: fake_logs(["exited with code 0\n"]))
+    monkeypatch.setattr(
+        "bonus.services.docker_watch.subprocess.Popen",
+        lambda *args, **kwargs: fake_logs(["exited with code 0\n"]))
     docker_watch_service.follow("web", "fix")
     assert calls == []
     assert docker_watch_service.crashed("exited with code 1") is True
@@ -409,8 +421,12 @@ def test_a_clean_exit_does_not_run_the_patch_loop(monkeypatch):
 def test_a_nonzero_exit_runs_the_patch_loop(monkeypatch):
     from bonus.services.docker_watch import docker_watch_service
     calls = []
-    monkeypatch.setattr(docker_watch_service.patch_bonus, "run", lambda *args, **kwargs: calls.append(kwargs) or {"status": "failed"})
-    monkeypatch.setattr("bonus.services.docker_watch.subprocess.Popen", lambda *args, **kwargs: fake_logs(["exited with code 1\n"]))
+    monkeypatch.setattr(
+        docker_watch_service.patch_bonus, "run",
+        lambda *args, **kwargs: calls.append(kwargs) or {"status": "failed"})
+    monkeypatch.setattr(
+        "bonus.services.docker_watch.subprocess.Popen",
+        lambda *args, **kwargs: fake_logs(["exited with code 1\n"]))
     docker_watch_service.follow("web", "fix")
     assert calls == [{"k": 5, "max_attempts": 1, "dry_run": False, "git_commit": False}]
 
@@ -420,7 +436,9 @@ def test_stopping_the_watch_ignores_the_next_log_line(monkeypatch):
     calls = []
     docker_watch_service._stop = True
     monkeypatch.setattr(docker_watch_service.patch_bonus, "run", lambda *args, **kwargs: calls.append(kwargs))
-    monkeypatch.setattr("bonus.services.docker_watch.subprocess.Popen", lambda *args, **kwargs: fake_logs(["Traceback (most recent call last):\n"]))
+    monkeypatch.setattr(
+        "bonus.services.docker_watch.subprocess.Popen",
+        lambda *args, **kwargs: fake_logs(["Traceback (most recent call last):\n"]))
     docker_watch_service.follow("web", "fix")
     assert calls == []
     docker_watch_service._stop = False
@@ -437,7 +455,9 @@ def test_a_log_process_that_will_not_die_is_killed(monkeypatch):
 def test_docker_routes_start_and_stop(monkeypatch):
     from bonus.app import app
     from bonus.services.docker_watch import docker_watch_service
-    monkeypatch.setattr(docker_watch_service, "start", lambda service, intent: {"ok": True, "running": True, "service": service, "error": None})
+    monkeypatch.setattr(docker_watch_service, "start", lambda service, intent: {
+        "ok": True, "running": True, "service": service, "error": None,
+    })
     monkeypatch.setattr(docker_watch_service, "stop", lambda: {"running": False, "service": "web", "error": None})
     client = TestClient(app)
     started = client.post("/bonus/docker/watch", json={"service": "web", "intent": "fix the crash"}).json()
