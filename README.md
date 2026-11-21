@@ -94,11 +94,25 @@ curl -s localhost:8000/patch -H 'content-type: application/json' \
 python -m p1.index /workspace            # Part 1: index once and exit
 python -m p1.index /workspace --watch    # Part 1: keep watching, print every reindex
 uvicorn p2.app:app                       # Part 2 only: the Patch Loop tab says "not available"
-uvicorn p3.app:app                       # Part 3 (what the container runs): Part 2 plus POST /patch
+uvicorn p3.app:app                       # Part 3 only: Part 2 plus POST /patch
+uvicorn bonus.app:app                    # what the container runs: Part 3 plus the bonus routes
 ```
 
 Inside Docker, prefix the Python commands with `docker compose run --rm ioc` (and stop the `ioc` service
 first, so that only one process writes to the Index).
+
+## Bonus
+
+`bonus/` is optional and is what `make up` serves. The mandatory routes are unchanged. The extra ones:
+
+| Route | What it does |
+|-------|----------------|
+| `POST /bonus/reindex` | full reindex on demand |
+| `POST /bonus/patch` | the Patch Loop, plus `dry_run` (a diff, nothing written) and `git_commit` (one line from the model after a green validation) |
+| `GET /bonus/events` | live attempt and validation status, Server-Sent Events |
+| `POST /bonus/docker/watch` | follow a container's logs and run one Patch Loop when a traceback shows up |
+
+The dashboard gains a Reindex button, Dry run and Git commit checkboxes, the diff, and the live validation feed. Git commit only works when the Target Project is inside a git repository. Docker watch needs the `docker` command.
 
 ## Configuration
 
@@ -127,7 +141,7 @@ cd target && python -m pytest -q         # the Target Project's own tests
 
 - `tests/test_*.py`: every layer of every part, at 100% line and branch coverage (`.coveragerc`).
 - `tests/test_layers.py`: the layer rules: views → services → repositories → models, a part imports only earlier
-  parts, only `p1/core` talks to Chroma and to Ollama, every source file is inside `p1/`, `p2/` or `p3/`.
+  parts, only `p1/core` talks to Chroma and to Ollama. Source lives in `p1/`, `p2/`, `p3/`, and the optional `bonus/`.
 - `tests/e2e/`: the real server started with uvicorn over a copy of `target/`, with a fake Ollama that answers from a
   script. They check each requirement of the subject from the outside: indexing, the Watcher, questions, the Patch
   Loop with byte-exact rollback, the sanity refusals and the 503 when Ollama is down.
@@ -166,6 +180,10 @@ p3/            Part 3, Patch Loop
   services/      sanity, validation, patch_loop
   views/         /patch
   app.py         the Part 2 app plus /patch
+bonus/         optional Chapter VII bonuses; this is the app `make up` serves
+  services/      reindex, dry-run diff, git commit, docker log watch
+  views/         /bonus/reindex /bonus/patch /bonus/events /bonus/docker/watch /bonus/bonus.js
+  app.py         the Part 3 routes plus the bonus routes
 tests/         tests of every part; tests/test_layers.py checks the layer rules
 
 Every module is one class and, at its end, the object the rest of the code uses, built with what it needs:

@@ -80,9 +80,10 @@ def test_config_and_core_import_no_layer_and_no_other_part():
 
 
 def test_all_source_files_are_inside_p1_p2_p3():
-    """The subject (Chapter IV): every source file lives in p1, p2 or p3. tests/ and target/ are not the project."""
+    """The subject (Chapter IV): source lives in p1, p2 or p3, plus the optional bonus folder."""
+    # bonus/ is the optional folder the subject allows next to p1, p2 and p3.
     outside = [p for p in ROOT.glob("*.py")] + [p for d in ROOT.iterdir() if d.is_dir() and d.name not in
-                                                 {*PARTS, "tests", "target", "docs", ".git"} and
+                                                 {*PARTS, "bonus", "tests", "target", "docs", ".git"} and
                                                  not d.name.startswith(".") for p in d.rglob("*.py")]
     assert outside == []
 

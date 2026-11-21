@@ -66,7 +66,7 @@ p3/                          Part 3: Patch Loop (uses p1 and p2)
 
 | Service  | Runs | Volumes |
 |----------|------|---------|
-| `ioc`    | `python:3.12-slim`; uvicorn serving `p3.app` on port 8000, with the **Watcher** in a background thread of the same process, sharing one Chroma client ([ADR-0002](./adr/0002-one-process-layered-parts.md)) | `chroma_data:/data/chroma`, `./target:/workspace` |
+| `ioc`    | `python:3.12-slim`; uvicorn serving `bonus.app` (Part 3 plus the bonus routes) on port 8000, with the **Watcher** in a background thread of the same process, sharing one Chroma client ([ADR-0002](./adr/0002-one-process-layered-parts.md)) | `chroma_data:/data/chroma`, `./target:/workspace` |
 | `ollama` | Ollama on CPU ([ADR-0003](./adr/0003-ollama-in-docker.md)); address overridable through `OLLAMA_HOST` | `ollama_models` |
 
 The **Index** lives in `/data/chroma`, outside the **Target Project**, so the **Watcher** never reacts to its own writes.
