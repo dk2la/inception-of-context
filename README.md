@@ -71,7 +71,8 @@ Six tabs, keys `1`–`6`: Overview (System map, status, live Watcher events), Fi
 Patch Loop, and **3D View**. The 3D View shows the three parts as stacked levels, one cube per step; the cubes follow
 the live system. For a demo: **Tour** (or `←` `→`) walks through every step with an explanation and the file that does
 it, the **Replay** buttons play each flow (indexing, a symbol question, an LLM question, a green patch, a rollback)
-without waiting for the model, a click on a cube explains it, `F` is fullscreen, `R` resets the camera and `I` (or **Info**, or the × on the card)
+without waiting for the model, **▶ Full run** (or `P`) plays all of them in one go, the camera flying to each part,
+**Speed** (or `+` `−`, 0.25× to 4×) changes the pace even in the middle of a run, a click on a cube explains it, `F` is fullscreen, `R` resets the camera and `I` (or **Info**, or the × on the card)
 hides the info card at the bottom left.
 It is plain CSS 3D: nothing is downloaded, it works offline.
 
