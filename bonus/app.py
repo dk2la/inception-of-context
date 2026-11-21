@@ -21,6 +21,10 @@ class BonusApp:
     """
 
     def __init__(self, mandatory):
+        # debug: mandatory is the p3 app. Its routes (POST /ask, POST /patch, GET /) are copied here.
+        # lifespan still starts the indexer and the watcher. Then the bonus routes are added:
+        # POST /bonus/reindex, POST /bonus/patch, GET /bonus/events,
+        # POST /bonus/docker/watch, POST /bonus/docker/stop, GET /bonus/bonus.js.
         self.app = FastAPI(title="Inception-of-Context", lifespan=mandatory.router.lifespan_context)
         for route in mandatory.routes:
             self.app.router.routes.append(route)
@@ -31,6 +35,9 @@ class BonusApp:
 
     async def inject_script(self, request, call_next):
         """The dashboard page gains the bonus script. Other responses are returned as they are."""
+        # debug: GET / is the dashboard. "</body>" becomes
+        # '<script src="/bonus/bonus.js"></script></body>'. The mandatory page has no src= of its own.
+        # GET /patch or a body with no "</body>" is returned unchanged.
         response = await call_next(request)
         if request.url.path != "/":
             return response

@@ -1,5 +1,8 @@
 // Bonus controls. Loaded only by bonus.app, after the mandatory dashboard script.
 (function () {
+  // debug: runs after the mandatory dashboard script, and only when bonus.app injected this file.
+  // overview gains a Reindex button. The patch form gains "dry run" and "git commit" (checked).
+  // a Live validation list listens to GET /bonus/events. #patch-run calls runBonusPatch.
   const head = document.querySelector("#tab-overview .page-head");
   if (head) {
     const button = document.createElement("button");
@@ -51,6 +54,9 @@
   }
 
   async function reindexNow() {
+    // debug: POST /bonus/reindex {}. body.chunks is the Chunk count.
+    // the button text becomes "Reindex (N)" and refreshOverview() reloads the overview.
+    // a failed request sets the button text to "Reindex failed".
     const button = document.getElementById("bonus-reindex");
     button.disabled = true;
     try {
@@ -65,6 +71,8 @@
   }
 
   function listen() {
+    // debug: EventSource("/bonus/events"). Each "data:" line is parsed and prepended to #bonus-live.
+    // ": waiting" heartbeats are not onmessage events. The list keeps the newest 40 lines.
     const source = new EventSource("/bonus/events");
     const list = document.getElementById("bonus-live");
     source.onmessage = (message) => {
@@ -77,6 +85,13 @@
   }
 
   function liveLine(event) {
+    // debug: {type: "attempt", detail: {number: 1, ok: false, validation_ok: false}}
+    //   return == "attempt 1 · failed · validation red"
+    // {type: "git", detail: {ok: true, message: "Add a power method to Calculator"}}
+    //   return == "committed: Add a power method to Calculator"
+    // {type: "dry_run", detail: {files: ["calculator/core.py"]}} -> "dry run · calculator/core.py"
+    // {type: "docker_crash", detail: {service: "calculator"}} -> "docker crash · calculator"
+    // {type: "finished", detail: {status: "success"}} -> "finished · success"
     const detail = event.detail || {};
     if (event.type === "attempt") {
       const validation = detail.validation_ok === true ? "validation green" :
@@ -90,6 +105,11 @@
   }
 
   async function runBonusPatch() {
+    // debug: intent "add a power function to Calculator", k 5, max attempts 3
+    // dry checkbox off, git checkbox on.
+    // POST /bonus/patch {intent, k: 5, max_attempts: 3, dry_run: false, git_commit: true}
+    // empty intent: showMessage "Type an Intent first." and return before the request.
+    // k and max_attempts are clamped to 1.. and 1..3.
     const intentBox = document.getElementById("intent");
     const intentText = intentBox.value.trim();
     if (intentText === "") {
@@ -119,6 +139,9 @@
   }
 
   function renderBonus(container, data, seconds) {
+    // debug: a real success uses renderPatchResult, then a "Git commit: ..." line and a <details> per diff.
+    // data.dry_run true: banner "Dry run", "Nothing was written · 4s", then the diff of calculator/core.py.
+    // data.status "refused": banner "Refused". data.git.ok false: "Git commit skipped: ...".
     if (!data.dry_run && typeof renderPatchResult === "function") {
       renderPatchResult(container, data, seconds);
     } else {
