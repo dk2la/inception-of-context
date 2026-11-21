@@ -10,6 +10,8 @@ from p2.repositories.search_repository import search_repository
 
 class SearchService:
     def __init__(self, settings, chroma_db, search_repository):
+        # debug: _bm25 is None until the first search. _bm25_version == -1 means "never built".
+        # POST /context and ask() both call search() on the object at the bottom of this file.
         self.settings = settings
         self.chroma_db = chroma_db
         self.search_repository = search_repository
@@ -20,14 +22,22 @@ class SearchService:
 
     def tokenize(self, text):
         """Lowercase words and numbers. Punctuation and underscores split words: divide_by_zero -> 3 words."""
+        # debug: tokenize("division by zero") == ["division", "by", "zero"]
+        # tokenize("divide_by_zero") == ["divide", "by", "zero"]
         return re.findall(r"[a-z0-9]+", text.lower())
 
     def vector_search(self, query):
         """Rank every Chunk by meaning. Return (ids best first, {id: similarity})."""
+        # debug: query == "division by zero"
+        # return == (["bb22…", "aa11…"], {"bb22…": 0.81, "aa11…": 0.22})
+        # bb22… is Calculator.divide. Same pair that rank_by_meaning returns.
         return self.search_repository.rank_by_meaning(query)
 
     def _build_bm25(self, collection):
         """Read every Chunk from the Index and build the BM25 index from them."""
+        # debug: all_texts() == (["aa11…", "bb22…"], ["    def add…", "    def divide…"])
+        # _bm25_ids keeps that same order. _bm25_version becomes chroma_db.INDEX_VERSION, for example 3.
+        # empty Index: _bm25 stays None, _bm25_ids == []
         # The version is read BEFORE the texts: if the Watcher changes the Index in between, this BM25 index
         # is marked older than the Index and is rebuilt on the next search, instead of staying stale.
         version = self.chroma_db.INDEX_VERSION
@@ -42,6 +52,11 @@ class SearchService:
 
         The BM25 index is rebuilt only when the Index changed (a new version, or another Index).
         """
+        # debug: query == "division by zero". First call builds _bm25. A later call reuses it
+        # while INDEX_VERSION is unchanged.
+        # scores is one float per Chunk, same order as _bm25_ids. Higher is a better keyword match.
+        # return == ["bb22…", "aa11…"]  # ids only, best first. Calculator.divide is bb22….
+        # empty Index: return == []
         collection = self.chroma_db.get_collection()
         if self.chroma_db.INDEX_VERSION != self._bm25_version or collection is not self._bm25_collection:
             self._build_bm25(collection)
@@ -54,6 +69,10 @@ class SearchService:
 
     def rrf_merge(self, ranked_a, ranked_b):
         """Reciprocal Rank Fusion: add 1 / (RRF_K + rank) for every list an id appears in. Return {id: score}."""
+        # debug: RRF_K == 60. Rank 1 adds 1/61, rank 2 adds 1/62.
+        # ranked_a (vector) == ["bb22…", "aa11…"], ranked_b (BM25) == ["bb22…", "aa11…"]
+        # bb22… is rank 1 in both lists: score == 1/61 + 1/61
+        # return == {"bb22…": 0.0328, "aa11…": 0.0323}
         scores = {}
         for ranked in (ranked_a, ranked_b):
             for rank, chunk_id in enumerate(ranked, start=1):
@@ -62,6 +81,16 @@ class SearchService:
 
     def search(self, query, k):
         """The top k Chunks for a query, best first: the Chunk fields plus id, text, similarity and score."""
+        # debug: POST /context {"query": "division by zero", "k": 3} and ask() both land here.
+        # top_ids is the RRF order, cut to k. k <= 0 or an empty Index: return == []
+        # return == [{
+        #     "id": "bb22…",
+        #     "text": "    def divide(self, a, b):\n        …",
+        #     "path": "calculator/core.py", "start_line": 16, "end_line": 20,
+        #     "name": "Calculator.divide", "kind": "method", "hash": "…",
+        #     "similarity": 0.81,   # vector only. 0.0 if this id was ranked by BM25 alone
+        #     "score": 0.0328,      # the RRF score
+        # }]
         vector_ids, similarity = self.vector_search(query)
         scores = self.rrf_merge(vector_ids, self.bm25_search(query))
         top_ids = sorted(scores, key=scores.get, reverse=True)[:max(k, 0)]
