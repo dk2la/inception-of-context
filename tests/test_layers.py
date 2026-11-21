@@ -1,4 +1,4 @@
-"""The layer rules (docs/adr/0006-layers-inside-each-part.md).
+"""The layer rules.
 
 Inside each part (p1, p2, p3), a layer imports only the layers below it:
 views -> services -> repositories -> models, and schemas are used by views only.

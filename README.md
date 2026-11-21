@@ -62,7 +62,7 @@ make up       # start the API, the Watcher and the dashboard
 
 - After `make models`: `docker compose exec ollama ollama list` shows both models.
 - After `make p1`: it prints `indexed N chunks from M files`. Run it while `ioc` is **stopped**
-  (`make down` first): only one process may write to the Index ([ADR-0002](docs/adr/0002-one-process-layered-parts.md)).
+  (`make down` first): only one process may write to the Index.
 - After `make up`: the dashboard is at <http://localhost:8000>, and the Overview tab shows the same Chunk count.
 
 ### The dashboard
@@ -90,7 +90,7 @@ It is plain CSS 3D: nothing is downloaded, it works offline.
    the ChromaDB Explorer only the Chunk you changed has a new id.
 2. **Questions**, in the Ask & Retrieve tab: "is there a function power?" (no) and "what functions are in
    core.py?" (exactly `add`, `subtract`, `multiply`, `divide`). Both work in Russian too. These two are answered
-   from the Index without calling the model ([ADR-0004](docs/adr/0004-symbol-questions-skip-the-llm.md)).
+   from the Index without calling the model.
 3. **Patch Loop**: in the Patch Loop tab, run the Intent "add a power function to Calculator". On CPU a full
    Patch Loop can take a minute or two. Restore the Target Project afterwards with `git checkout target/`.
 
@@ -146,7 +146,7 @@ keywords (BM25), so the order can differ from `sim`.
 | LLM | hybrid search for the top-k Chunks, then the instruct model answers from them | yes | seconds to minutes on CPU |
 
 The first two are exact questions with exact answers, so they skip the model: it cannot invent a function that
-does not exist ([ADR-0004](docs/adr/0004-symbol-questions-skip-the-llm.md)). Everything else goes to the model.
+does not exist. Everything else goes to the model.
 
 | Type | Branch | Why |
 |------|--------|-----|
@@ -259,8 +259,7 @@ attempt and its validation. Then `make crash` again: every job passes and the lo
 | `WATCH_POLLING` | `0` | `1` makes the Watcher poll instead of relying on file notifications |
 
 - **Faster models on a Mac.** Docker cannot use the GPU, so models run on the CPU. A native Ollama on the host is
-  much faster and is still local: `OLLAMA_HOST=http://host.docker.internal:11434 make up`
-  ([ADR-0003](docs/adr/0003-ollama-in-docker.md)).
+  much faster and is still local: `OLLAMA_HOST=http://host.docker.internal:11434 make up`.
 - **Edits are not noticed?** Some bind mounts drop file notifications: `WATCH_POLLING=1 make up`.
 
 ## Tests
@@ -325,8 +324,4 @@ tests/         tests of every part; tests/test_layers.py checks the layer rules
 Every module is one class and, at its end, the object the rest of the code uses, built with what it needs:
 `chunker_service = ChunkerService(chunk_factory)`, `event_repository = EventRepository()`,
 `indexer_service = IndexerService(settings, chroma_db, chunk_factory, chunk_repository, file_repository, chunker_service)`.
-docs/          plan.md (the design), adr/ (the reasons behind it)
-GLOSSARY.md    the words used everywhere: Chunk, Index, Watcher, Intent, Patch, Attempt, Rollback, ...
 ```
-
-Read next: [`docs/plan.md`](docs/plan.md), [`GLOSSARY.md`](GLOSSARY.md), [`docs/adr/`](docs/adr/).

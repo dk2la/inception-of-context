@@ -1,6 +1,6 @@
 """The symbol-question router: recognise "is there a function X?" and "what functions are in file Y?".
 
-Those two kinds of Question are answered from the Index without the model (ADR-0004).
+Those two kinds of Question are answered from the Index without the model.
 """
 import re
 

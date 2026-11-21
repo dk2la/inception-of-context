@@ -1,6 +1,6 @@
 """The Index database, ChromaDB: one Chroma collection, shared by every part of this process.
 
-One Chroma client per process (ADR-0002): the Watcher thread and the API requests share it.
+One Chroma client per process: the Watcher thread and the API requests share it.
 This is the only module that imports chromadb; the repositories of p1 and p2 use chroma_db.get_collection().
 """
 import threading
