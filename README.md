@@ -139,7 +139,7 @@ python -m pytest -q tests/e2e            # only the end-to-end tests
 cd target && python -m pytest -q         # the Target Project's own tests
 ```
 
-- `tests/test_*.py`: every layer of every part, at 100% line and branch coverage (`.coveragerc`).
+- `tests/test_*.py`: every layer of every part, and `bonus/`, at 100% line and branch coverage (`.coveragerc`).
 - `tests/test_layers.py`: the layer rules: views → services → repositories → models, a part imports only earlier
   parts, only `p1/core` talks to Chroma and to Ollama. Source lives in `p1/`, `p2/`, `p3/`, and the optional `bonus/`.
 - `tests/e2e/`: the real server started with uvicorn over a copy of `target/`, with a fake Ollama that answers from a

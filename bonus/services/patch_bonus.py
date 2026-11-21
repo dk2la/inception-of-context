@@ -117,7 +117,7 @@ class PatchBonusService:
                 if attempt["ok"]:
                     break
                 previous = {"patch": attempt["patch"], "error": attempt["error"]}
-            success = bool(attempts) and attempts[-1]["ok"]
+            success = attempts[-1]["ok"]
             patch = attempts[-1]["patch"] if success else None
             diffs = self.diffs_from_snapshot(saved, patch) if patch else []
             git = None

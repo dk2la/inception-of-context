@@ -1,9 +1,10 @@
 # python -m coverage run -m pytest && python -m coverage report   (see `make test`)
 [run]
 branch = True
-source = p1, p2, p3
+source = p1, p2, p3, bonus
 
 [report]
+fail_under = 100
 show_missing = True
 skip_covered = True
 exclude_lines =
